@@ -1,7 +1,7 @@
 // ========================================
 // GLOBAL STATE & CONFIGURATION
 // ========================================
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = '/api';
 let currentPlatform = 'youtube';
 let currentFormat = 'video'; // For YouTube: 'video' or 'audio'
 
