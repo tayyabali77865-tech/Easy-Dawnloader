@@ -69,8 +69,10 @@ app.post('/api/youtube/download', async (req, res) => {
         // METHOD 1: Cobalt API v10 (Updated Feb 2026)
         // ==========================================
         const cobaltInstances = [
-            'https://cobalt-api.kwiatekmiki.com',  // Working v10 instance
-            'https://api.cobalt.tools' // Official (requires different handling usually, but keeping as backup)
+            'https://cobalt-api.kwiatekmiki.com',  // Primary
+            'https://api.cobalt.tools', // Official
+            'https://cobalt.oup.us',
+            'https://cobalt.slpy.one'
         ];
 
         for (const base of cobaltInstances) {
