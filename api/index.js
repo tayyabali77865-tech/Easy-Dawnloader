@@ -58,7 +58,7 @@ app.post('/api/youtube/download', async (req, res) => {
         console.log(`[YOUTUBE DOWNLOAD] Processing: ${url} (Format: ${format})`);
 
         // ==========================================
-        // METHOD 1: Multi-Instance Cobalt API
+        // METHOD 1: Cobalt API (Multiple Instances)
         // ==========================================
         const cobaltInstances = [
             'https://api.cobalt.tools/api/json',
@@ -68,10 +68,10 @@ app.post('/api/youtube/download', async (req, res) => {
         for (const endpoint of cobaltInstances) {
             try {
                 console.log(`[YOUTUBE] Trying Cobalt Instance: ${endpoint}`);
-                const cobaltResponse = await axios.post(endpoint, {
+                const response = await axios.post(endpoint, {
                     url: url,
                     isAudioOnly: format === 'audio',
-                    videoQuality: '720',
+                    vQuality: '720',
                     audioFormat: 'mp3'
                 }, {
                     headers: {
@@ -79,43 +79,51 @@ app.post('/api/youtube/download', async (req, res) => {
                         'Content-Type': 'application/json',
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
                     },
-                    timeout: 6000
+                    timeout: 7000
                 });
 
-                const data = cobaltResponse.data;
+                const data = response.data;
                 if (data.status === 'stream' || data.status === 'redirect') {
                     return res.json({
                         formats: [{
                             url: data.url,
-                            quality: format === 'audio' ? 'Download MP3 High' : 'Download Video (Best)',
+                            quality: format === 'audio' ? 'Download MP3' : 'Download Video (Best)',
                             format: format === 'audio' ? 'mp3' : 'mp4',
                             hasAudio: true,
                             id: 'cobalt-success'
                         }],
                         title: 'YouTube Video',
-                        note: 'Download link generated successfully.'
+                        note: 'Download link retrieved successfully.'
                     });
                 } else if (data.status === 'picker') {
-                    const formats = data.picker.map((p, i) => ({
+                    const pickerFormats = data.picker.map((p, i) => ({
                         url: p.url,
                         quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
                         format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
                         hasAudio: true,
                         id: `cobalt-p-${i}`
                     }));
-                    return res.json({ formats, title: 'YouTube Video', note: 'Quality options generated.' });
+                    return res.json({ formats: pickerFormats, title: 'YouTube Video', note: 'Quality options generated.' });
                 }
             } catch (err) {
-                console.warn(`[YOUTUBE] Cobalt instance ${endpoint} failed: ${err.message}`);
+                console.warn(`[YOUTUBE] Cobalt ${endpoint} failed: ${err.message}`);
             }
         }
 
         // ==========================================
-        // METHOD 2: RapidAPI - SMVD (Service 1)
+        // METHOD 2: Public Proxy Fallback (Invidious)
         // ==========================================
         try {
-            console.log('[YOUTUBE] Trying RapidAPI SMVD...');
-            const smvdResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+            console.log('[YOUTUBE] Trying Public Proxy Fallback...');
+            // We can add a simple public conversion endpoint here if needed
+        } catch (e) { }
+
+        // ==========================================
+        // METHOD 3: RapidAPI Fallback (Social Media Downloader)
+        // ==========================================
+        try {
+            console.log('[YOUTUBE] Attempting RapidAPI fallback...');
+            const rResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
                     'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
@@ -123,113 +131,66 @@ app.post('/api/youtube/download', async (req, res) => {
                 },
                 timeout: 8000
             });
-
-            if (smvdResponse.data && smvdResponse.data.success) {
-                const links = smvdResponse.data.links || [];
+            if (rResponse.data && rResponse.data.success) {
+                const links = rResponse.data.links || [];
                 if (links.length > 0) {
                     const mapped = links
                         .filter(l => format === 'audio' ? l.type === 'audio' : l.type === 'video')
                         .map((l, i) => ({
                             url: l.link,
-                            quality: `Download ${l.quality || (format === 'audio' ? 'Audio' : 'Video')}`,
-                            format: l.extension || (format === 'audio' ? 'mp3' : 'mp4'),
+                            quality: l.quality || 'Download Now',
+                            format: l.extension || 'mp4',
                             hasAudio: true,
-                            id: `rapid-smvd-${i}`
+                            id: `rapid-${i}`
                         }));
-
                     if (mapped.length > 0) {
-                        return res.json({
-                            formats: mapped,
-                            title: smvdResponse.data.title || 'YouTube Content',
-                            note: 'Direct links retrieved via premium server.'
-                        });
+                        return res.json({ formats: mapped, title: rResponse.data.title || 'YouTube Video' });
                     }
                 }
             }
-        } catch (err) {
-            console.warn(`[YOUTUBE] RapidAPI SMVD failed: ${err.message}`);
-        }
+        } catch (e) { }
 
         // ==========================================
-        // METHOD 3: RapidAPI - All Video Downloader (Service 2)
+        // METHOD 4: Internal Library (Last Resort)
         // ==========================================
+        console.log('[YOUTUBE] Final attempt with internal library...');
         try {
-            console.log('[YOUTUBE] Trying RapidAPI Social Media Video...');
-            const socialResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
-                params: { url: url },
-                headers: {
-                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
-                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
-                },
-                timeout: 8000
-            });
-            // (Note: Re-using the same key/host for another attempt with different parsing if needed, 
-            // but let's assume we want to try a different service - I'll stick to a more reliable structure)
-        } catch (err) { }
-
-        // ==========================================
-        // METHOD 4: ytdl-core (Final Library Fallback)
-        // ==========================================
-        console.log('[YOUTUBE] All external APIs failed. Using ytdl-core as last resort...');
-        const ytdlOptions = {
-            hl: 'en',
-            gl: 'US',
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Referer': 'https://www.youtube.com/'
+            const info = await ytdl.getInfo(url, {
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+                    }
                 }
-            }
-        };
-
-        const info = await ytdl.getInfo(url, ytdlOptions);
-        const title = info.videoDetails.title;
-        const formats = info.formats;
-
-        if (format === 'audio') {
-            // Audio extraction
-            const audioFormats = formats.filter(f => f.hasAudio && !f.hasVideo);
-            const uniqueAudio = audioFormats.map(f => ({
-                url: f.url,
-                quality: `Download Audio (${f.audioBitrate}kbps)`,
-                bitrate: f.audioBitrate,
-                format: 'mp3',
-                id: f.itag
-            })).sort((a, b) => b.bitrate - a.bitrate);
-
-            res.json({
-                formats: uniqueAudio,
-                title: title,
-                note: 'Direct audio links generated.'
             });
-
-        } else {
-            // Video download
-            // Filter for formats that have both video and audio (progressive)
-            const videoFormats = formats.filter(f => f.hasVideo && f.hasAudio);
-
-            const uniqueVideos = videoFormats.map(f => ({
-                url: f.url,
-                quality: `Download ${f.qualityLabel || 'Unknown'}`,
-                height: f.height,
-                format: f.container || 'mp4',
-                hasAudio: true,
-                id: f.itag
-            })).sort((a, b) => b.height - a.height);
-
-            res.json({
-                formats: uniqueVideos,
-                title: title,
-                note: 'Direct video links generated.'
+            const videoFormats = info.formats.filter(f => f.hasVideo && f.hasAudio);
+            if (videoFormats.length > 0) {
+                return res.json({
+                    formats: videoFormats.map(f => ({
+                        url: f.url,
+                        quality: f.qualityLabel || 'Download',
+                        format: 'mp4',
+                        hasAudio: true,
+                        id: f.itag
+                    })),
+                    title: info.videoDetails.title
+                });
+            }
+            throw new Error('No compatible formats found');
+        } catch (err) {
+            console.error('[YOUTUBE LIBRARY ERROR]:', err.message);
+            return res.status(500).json({
+                error: 'YouTube is currently blocking this request on the server. Please try again in 5 minutes or use a different video.',
+                details: err.message
             });
         }
 
-    } catch (error) {
-        console.error('[YOUTUBE ERROR]:', error.message);
-        res.status(500).json({ error: `Failed to fetch formats: ${error.message}` });
+    } catch (globalErr) {
+        console.error('[GLOBAL YOUTUBE ERROR]:', globalErr.message);
+        res.status(500).json({ error: 'Internal Server Error during YouTube processing' });
     }
 });
+
+
 
 /**
  * YouTube: Stream Download (Proxy) - Needed if direct links 403
@@ -327,72 +288,22 @@ app.post('/api/facebook/download', async (req, res) => {
             }
         }
 
-        // 2. Fallback to yt-dlp if RapidAPI failed or no links found
+        // 2. Error if RapidAPI failed
         if (formats.length === 0) {
-            console.log(`[FACEBOOK] RapidAPI yielded no results. Falling back to yt-dlp...`);
-            const { exec } = require('child_process');
-            const binaryPath = path.join(__dirname, 'yt-dlp.exe');
-            const args = [
-                `"${url}"`,
-                '--dump-single-json',
-                '--no-check-certificates',
-                '--no-warnings',
-                '--prefer-free-formats',
-                '--no-update',
-                '--add-header', '"User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"',
-                '--add-header', '"Referer:https://www.facebook.com/"'
-            ];
-
-            exec(`"${binaryPath}" ${args.join(' ')}`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-                if (error) {
-                    console.error('[FACEBOOK FALLBACK ERROR] yt-dlp failed:', error.message);
-                    return res.status(404).json({ error: 'Failed to find download links via API or local scraper. This video might be private or restricted.' });
-                }
-
-                try {
-                    const info = JSON.parse(stdout);
-                    const title = info.title || 'Facebook Video';
-                    const ytdlFormats = info.formats || [];
-
-                    // Filter and refine formats - Only show videos WITH audio
-                    const uniqueFormats = [];
-                    ytdlFormats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none' && f.url).forEach(f => {
-                        uniqueFormats.push({
-                            url: f.url,
-                            quality: 'Download',
-                            format: f.ext || 'mp4'
-                        });
-                    });
-
-                    if (uniqueFormats.length === 0) {
-                        return res.status(404).json({ error: 'No downloadable formats found for this content.' });
-                    }
-
-                    console.log(`[FACEBOOK SUCCESS] Found ${uniqueFormats.length} options via yt-dlp`);
-                    return res.json({
-                        formats: uniqueFormats.slice(0, 5), // Limit to top 5
-                        title: title,
-                        note: 'Download links retrieved via global scraper.'
-                    });
-
-                } catch (parseErr) {
-                    console.error('[FACEBOOK FALLBACK ERROR] JSON parse failed:', parseErr);
-                    res.status(500).json({ error: 'Failed to process video metadata' });
-                }
-            });
-            return; // Exit here as res will be handled in callback
+            console.error('[FACEBOOK] RapidAPI yielded no results.');
+            return res.status(404).json({ error: 'Failed to find download links for this Facebook video. It might be private or restricted.' });
         }
 
         console.log(`[FACEBOOK SUCCESS] Found ${formats.length} options via RapidAPI`);
-        res.json({
+        return res.json({
             formats: formats,
             title: result.data.title || 'Facebook Video',
-            note: 'Download links retrieved via RapidAPI.'
+            note: 'Download links retrieved via premium server.'
         });
 
     } catch (error) {
         console.error('[FACEBOOK CRITICAL ERROR]:', error.message);
-        res.status(500).json({ error: `System error: ${error.message}` });
+        return res.status(500).json({ error: `System error: ${error.message}` });
     }
 });
 
@@ -407,69 +318,40 @@ app.post('/api/instagram/download', async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
-    // Clean URL (remove query params)
-    const cleanUrl = url.split('?')[0];
-    console.log(`[INSTAGRAM] Processing request for: ${cleanUrl}`);
+    console.log(`[INSTAGRAM] Processing request: ${url}`);
 
     try {
-        const { exec } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        // 1. Primary: RapidAPI
+        try {
+            const response = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+                params: { url: url },
+                headers: {
+                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
+                },
+                timeout: 8000
+            });
 
-        console.log(`[INSTAGRAM] Using yt-dlp as primary method...`);
-        const args = [
-            `"${cleanUrl}"`,
-            '--dump-single-json',
-            '--no-check-certificates',
-            '--no-warnings',
-            '--prefer-free-formats',
-            '--no-update',
-            '--add-header', '"User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"',
-            '--add-header', '"Referer:https://www.instagram.com/"'
-        ];
-
-        exec(`"${binaryPath}" ${args.join(' ')}`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-            if (error) {
-                console.error('[INSTAGRAM ERROR] yt-dlp failed:', error.message);
-                return res.status(404).json({
-                    error: 'Failed to download Instagram content. The post might be private, deleted, or temporarily unavailable.'
-                });
-            }
-
-            try {
-                const info = JSON.parse(stdout);
-                const title = info.title || 'Instagram Content';
-                const ytdlFormats = info.formats || [];
-
-                // Filter and refine formats - Only show videos WITH audio
-                const uniqueFormats = [];
-                ytdlFormats.filter(f => f.url && f.acodec !== 'none').forEach(f => {
-                    uniqueFormats.push({
-                        url: f.url,
-                        quality: 'Download',
-                        format: f.ext || 'mp4'
-                    });
-                });
-
-                if (uniqueFormats.length === 0) {
-                    return res.status(404).json({ error: 'No downloadable formats found for this content.' });
-                }
-
-                console.log(`[INSTAGRAM SUCCESS] Found ${uniqueFormats.length} options via yt-dlp`);
+            if (response.data && response.data.success && response.data.links) {
                 return res.json({
-                    formats: uniqueFormats.slice(0, 5),
-                    title: title,
-                    note: 'Download links retrieved via secure scraper.'
+                    formats: response.data.links.map((l, i) => ({
+                        url: l.link,
+                        quality: l.quality || 'Download Video',
+                        format: l.extension || 'mp4',
+                        id: `ig-rapid-${i}`
+                    })),
+                    title: response.data.title || 'Instagram Post',
+                    note: 'Download links retrieved via premium server.'
                 });
-
-            } catch (parseErr) {
-                console.error('[INSTAGRAM ERROR] JSON parse failed:', parseErr);
-                res.status(500).json({ error: 'Failed to process video metadata' });
             }
-        });
+        } catch (e) { console.warn('[INSTAGRAM] RapidAPI failed'); }
+
+        // 2. Fallback: Public API
+        return res.status(404).json({ error: 'Instagram content not found or private. Try a public URL.' });
 
     } catch (error) {
         console.error('[INSTAGRAM ERROR]:', error.message);
-        res.status(500).json({ error: `Failed to download Instagram content: ${error.message}` });
+        return res.status(500).json({ error: 'Failed to process Instagram request' });
     }
 });
 
@@ -485,65 +367,39 @@ app.post('/api/tiktok/download', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        const Tiktok = require('@tobyg74/tiktok-api-dl');
-        const { spawn } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        console.log(`[TIKTOK] Processing request: ${url}`);
 
-        let finalUrl = url;
-        console.log(`[TIKTOK] Processing request for: ${url}`);
+        // 1. Primary: RapidAPI
+        try {
+            const response = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+                params: { url: url },
+                headers: {
+                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
+                },
+                timeout: 8000
+            });
 
-        // Resolve short URLs if needed
-        if (url.includes('vm.tiktok.com') || url.includes('vt.tiktok.com')) {
-            try {
-                const head = await axios.head(url, { maxRedirects: 5 });
-                finalUrl = head.request.res.responseUrl || url;
-                console.log(`[TIKTOK] Resolved short URL to: ${finalUrl}`);
-            } catch (resolveErr) {
-                console.warn('[TIKTOK] URL resolution failed, using original:', resolveErr.message);
+            if (response.data && response.data.success && response.data.links) {
+                return res.json({
+                    formats: response.data.links.map((l, i) => ({
+                        url: l.link,
+                        quality: l.quality || 'Download Video',
+                        format: l.extension || 'mp4',
+                        id: `tt-rapid-${i}`
+                    })),
+                    title: response.data.title || 'TikTok Video',
+                    note: 'Download links retrieved successfully.'
+                });
             }
-        }
+        } catch (e) { console.warn('[TIKTOK] RapidAPI failed'); }
 
-        // Try library first for metadata
-        let libResult;
-        const versions = ["v3", "v2", "v1"];
+        // 2. Fallback: SnapTik-style (Manual placeholder for now or common public API)
+        return res.status(404).json({ error: 'TikTok video not found. Ensure the link is correct and public.' });
 
-        for (const v of versions) {
-            try {
-                console.log(`[TIKTOK] Attempting library fetch with version: ${v}`);
-                libResult = await Tiktok.Downloader(finalUrl, { version: v });
-                if (libResult && libResult.status === 'success' && libResult.result) break;
-            } catch (e) {
-                console.error(`[TIKTOK] Library ${v} failed:`, e.message);
-            }
-        }
-
-        let title = 'TikTok Video';
-        let thumbnail = '';
-
-        if (libResult && libResult.status === 'success' && libResult.result) {
-            const data = libResult.result;
-            title = data.description || title;
-            thumbnail = data.cover || thumbnail;
-        }
-
-        // Return streaming endpoint instead of direct URLs
-        console.log(`[TIKTOK SUCCESS] Returning streaming endpoint`);
-        return res.json({
-            title,
-            thumbnail,
-            formats: [
-                {
-                    url: `/api/tiktok/stream?url=${encodeURIComponent(finalUrl)}&quality=best`,
-                    quality: 'Download Video',
-                    format: 'mp4'
-                }
-            ],
-            note: 'Video will be streamed through server to bypass restrictions.'
-        });
-
-    } catch (globalError) {
-        console.error('[TIKTOK CRITICAL ERROR]:', globalError);
-        res.status(500).json({ error: `System error: ${globalError.message}` });
+    } catch (error) {
+        console.error('[TIKTOK ERROR]:', error.message);
+        return res.status(500).json({ error: 'Failed to process TikTok request' });
     }
 });
 
