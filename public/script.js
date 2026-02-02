@@ -184,16 +184,15 @@ const renderYouTubeResults = (videoUrl, metadata, downloadData) => {
         downloadData.formats.forEach(format => {
             const hasAudio = format.hasAudio !== false; // Default to true if undefined
 
-            let finalUrl;
-            // Cobalt v10, RapidAPI, and YT5s return direct downloadable links
-            if (format.id === 'cobalt-success' || format.id.startsWith('rapid') || format.id.startsWith('yt5s') || format.id.startsWith('ytapi')) {
-                finalUrl = format.url;
-            } else {
-                // For other sources (like Invidious googlevideo links), use the universal proxy
-                // to avoid CORS and hotlink protection issues.
-                // NOTE: We pass format.url (the direct video link), NOT videoUrl (the YouTube page)
-                finalUrl = `${API_BASE}/proxy?url=${encodeURIComponent(format.url)}&filename=${encodeURIComponent(downloadData.title || 'video')}.${format.format}`;
-            }
+            // Universal Proxy Strategy:
+            // Always use the backend proxy for ALL downloads.
+            // valid Content-Type headers are critical for browser playback/download.
+            // If the upstream provider (Cobalt) sends no Content-Type, the browser might save it as text/html or generic file.
+            // Our proxy will force the correct headers.
+
+            // NOTE: We pass format.url (the direct video link).
+            // We use the proxy endpoint which streams data and sets Content-Type.
+            const finalUrl = `${API_BASE}/proxy?url=${encodeURIComponent(format.url)}&filename=${encodeURIComponent(downloadData.title || 'video')}.${format.format}`;
 
             const downloadItem = createDownloadButton(
                 finalUrl,
