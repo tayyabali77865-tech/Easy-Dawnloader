@@ -63,6 +63,7 @@ app.post('/api/youtube/download', async (req, res) => {
 
     try {
         console.log(`[YOUTUBE DOWNLOAD] Processing: ${url} (Format: ${format})`);
+        const failureReasons = []; // Track why each method failed
 
         // ==========================================
         // METHOD 1: Cobalt API (Multiple Instances)
@@ -115,7 +116,9 @@ app.post('/api/youtube/download', async (req, res) => {
                     return res.json({ formats: pickerFormats, title: 'YouTube Video', note: 'Quality options generated.' });
                 }
             } catch (err) {
-                console.warn(`[YOUTUBE] Cobalt ${endpoint} failed: ${err.response?.status || err.message}`);
+                const reason = `Cobalt ${endpoint}: ${err.response?.status || err.message}`;
+                failureReasons.push(reason);
+                console.warn(`[YOUTUBE] ${reason}`);
                 if (err.response?.data) console.warn(`[YOUTUBE] Cobalt Error Body:`, JSON.stringify(err.response.data).substring(0, 200));
             }
         }
@@ -161,7 +164,9 @@ app.post('/api/youtube/download', async (req, res) => {
                             }
                         }
                     } catch (e) {
-                        console.warn(`[YOUTUBE] Invidious ${instance} failed: ${e.response?.status || e.message}`);
+                        const reason = `Invidious ${instance}: ${e.response?.status || e.message}`;
+                        failureReasons.push(reason);
+                        console.warn(`[YOUTUBE] ${reason}`);
                     }
                 }
             }
@@ -208,7 +213,9 @@ app.post('/api/youtube/download', async (req, res) => {
                 }
             }
         } catch (e) {
-            console.warn(`[YOUTUBE] Y2Mate failed: ${e.message}`);
+            const reason = `Y2Mate: ${e.message}`;
+            failureReasons.push(reason);
+            console.warn(`[YOUTUBE] ${reason}`);
         }
 
         // ==========================================
@@ -293,10 +300,12 @@ app.post('/api/youtube/download', async (req, res) => {
         // FINAL: All Methods Failed
         // ==========================================
         console.error('[YOUTUBE] All download methods exhausted');
+        console.error('[YOUTUBE] Failure summary:', failureReasons);
         return res.json({
             error: 'Unable to download this video using free methods.',
-            details: 'All free APIs (Cobalt, Invidious, Y2Mate) failed to retrieve download links.',
-            hint: 'This video might be age-restricted, private, or region-locked. For better reliability, add your own RapidAPI key (free tier available) - check SETUP.md for instructions.'
+            details: `Tried ${failureReasons.length} methods. Failures: ${failureReasons.join(' | ')}`,
+            hint: 'All free APIs failed. This video might be restricted. For better reliability, add your own RapidAPI key (free tier available) - check SETUP.md for instructions.',
+            debugInfo: failureReasons
         });
 
     } catch (globalErr) {
