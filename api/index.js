@@ -11,6 +11,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Explicitly serve index.html for the root route to fix "Cannot GET /"
+app.get('/', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../index.html'));
+});
+
+// Serve static assets (CSS, JS, images) from the root
+app.use(express.static(path.resolve(__dirname, '../')));
+
 
 // HTTPS Agent to bypass SSL certificate verification
 const httpsAgent = new https.Agent({
