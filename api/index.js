@@ -55,76 +55,102 @@ app.post('/api/youtube/download', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        console.log(`[YOUTUBE DOWNLOAD] Fetching formats for: ${url}`);
+        console.log(`[YOUTUBE DOWNLOAD] Processing: ${url} (Format: ${format})`);
 
-        // Options to bypass "Sign in to confirm you're not a bot"
+        // 1. PRIMARY METHOD: Cobalt API (Fastest and very reliable for Vercel)
+        try {
+            console.log('[YOUTUBE] Attempting Cobalt API...');
+            const cobaltResponse = await axios.post('https://api.cobalt.tools/api/json', {
+                url: url,
+                aAccept: format === 'audio', // Request audio if needed
+                vQuality: '720' // Standard quality for best compatibility
+            }, {
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                },
+                timeout: 8000
+            });
+
+            const data = cobaltResponse.data;
+            if (data.status === 'stream' || data.status === 'redirect') {
+                return res.json({
+                    formats: [{
+                        url: data.url,
+                        quality: format === 'audio' ? 'Download MP3 Best' : 'Download Video (Best Quality)',
+                        format: format === 'audio' ? 'mp3' : 'mp4',
+                        hasAudio: true,
+                        id: 'cobalt-primary'
+                    }],
+                    title: 'YouTube Content',
+                    note: 'Download links retrieved successfully.'
+                });
+            } else if (data.status === 'picker') {
+                const results = data.picker.map((p, idx) => ({
+                    url: p.url,
+                    quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
+                    format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
+                    hasAudio: true,
+                    id: `cobalt-picker-${idx}`
+                }));
+                return res.json({
+                    formats: results,
+                    title: 'YouTube Content',
+                    note: 'Select your preferred quality below.'
+                });
+            }
+        } catch (cobaltErr) {
+            console.warn('[YOUTUBE] Cobalt API rate limited or down. Trying RapidAPI...');
+        }
+
+        // 2. SECONDARY METHOD: RapidAPI (Social Media Video Downloader)
+        try {
+            console.log('[YOUTUBE] Attempting RapidAPI...');
+            const rapidResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+                params: { url: url },
+                headers: {
+                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
+                },
+                timeout: 10000
+            });
+
+            if (rapidResponse.data && rapidResponse.data.success) {
+                const links = rapidResponse.data.links || [];
+                if (links.length > 0) {
+                    const mapped = links.map((l, i) => ({
+                        url: l.link,
+                        quality: `Download ${l.quality || 'HD'}`,
+                        format: l.extension || 'mp4',
+                        hasAudio: true,
+                        id: `rapid-${i}`
+                    }));
+                    return res.json({
+                        formats: mapped,
+                        title: rapidResponse.data.title || 'YouTube Video',
+                        note: 'Download links retrieved via premium server.'
+                    });
+                }
+            }
+        } catch (rapidErr) {
+            console.warn('[YOUTUBE] RapidAPI failed. Falling back to internal library...');
+        }
+
+        // 3. FINAL FALLBACK: ytdl-core (Local library, prone to bot errors on Vercel)
         const ytdlOptions = {
             hl: 'en',
             gl: 'US',
             requestOptions: {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                    'Accept-Language': 'en-US,en;q=1.0,en;q=0.9',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                    'Referer': 'https://www.youtube.com/',
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': 'https://www.youtube.com/'
                 }
             }
         };
 
-        let info;
-        try {
-            info = await ytdl.getInfo(url, ytdlOptions);
-        } catch (ytdlErr) {
-            console.warn('[YOUTUBE DOWNLOAD] ytdl-core failed, attempting Cobalt fallback...', ytdlErr.message);
-
-            // FALLBACK TO COBALT API (Zero-Configuration, Reliable)
-            try {
-                const cobaltResponse = await axios.post('https://api.cobalt.tools/api/json', {
-                    url: url
-                }, {
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'Mozilla/5.0'
-                    },
-                    timeout: 10000
-                });
-
-                const data = cobaltResponse.data;
-                if (data.status === 'stream' || data.status === 'redirect') {
-                    // Single stream result
-                    return res.json({
-                        formats: [{
-                            url: data.url,
-                            quality: 'Download Video (Best Quality)',
-                            format: 'mp4',
-                            hasAudio: true,
-                            id: 'cobalt'
-                        }],
-                        title: 'YouTube Video',
-                        note: 'Download links retrieved via global fallback.'
-                    });
-                } else if (data.status === 'picker') {
-                    // Multiple formats
-                    const formats = data.picker.map((p, index) => ({
-                        url: p.url,
-                        quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
-                        format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
-                        hasAudio: true,
-                        id: `cobalt-${index}`
-                    }));
-                    return res.json({
-                        formats: formats,
-                        title: 'YouTube Video',
-                        note: 'Download links retrieved via global fallback.'
-                    });
-                }
-                throw new Error('Cobalt API returned unexpected status');
-            } catch (cobaltErr) {
-                console.error('[YOUTUBE FALLBACK ERROR]:', cobaltErr.message);
-                throw ytdlErr; // Re-throw original error if fallback also fails
-            }
-        }
+        const info = await ytdl.getInfo(url, ytdlOptions);
 
         const title = info.videoDetails.title;
         const formats = info.formats;
