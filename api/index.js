@@ -11,6 +11,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Serve static assets from root
+app.use(express.static(path.join(__dirname, '..')));
+
+// Explicitly serve index.html for root route
+app.get('/', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../index.html'));
+});
+
 // HTTPS Agent to bypass SSL certificate verification
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
