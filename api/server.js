@@ -312,20 +312,10 @@ app.post('/api/youtube/download', async (req, res) => {
                         id: f.itag
                     })),
                     title: info.videoDetails.title
-            throw new Error('No compatible formats found');
-                } catch (err) {
-                    console.error('[YOUTUBE LIBRARY ERROR]:', err.message);
-                    return res.status(500).json({
-                        error: 'All download methods failed (including free public APIs).',
-                        details: `Error: ${err.message}`,
-                        hint: 'This video might be age-restricted or private. For better reliability, check SETUP.md to add your own RapidAPI key (free tier available).'
-                    });
-                }
-
-            } catch (globalErr) {
-                console.error('[GLOBAL YOUTUBE ERROR]:', globalErr.message);
-                res.status(500).json({ error: 'Internal Server Error during YouTube processing' });
+                });
             }
+            throw new Error('No compatible formats found');
+        }
         });
 
 
