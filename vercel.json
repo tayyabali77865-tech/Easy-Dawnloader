@@ -11,8 +11,12 @@
             "handle": "filesystem"
         },
         {
-            "src": "/(.*)",
+            "src": "/api/(.*)",
             "dest": "/server.js"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
         }
     ]
 }

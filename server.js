@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-// Serve static files from 'public' directory
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from root directory
+app.use(express.static(path.join(__dirname)));
 
 
 // HTTPS Agent to bypass SSL certificate verification
@@ -25,7 +25,7 @@ const httpsAgent = new https.Agent({
 const ytdl = require('@distube/ytdl-core');
 
 /**
- * YouTube: Fetch Video Metadata
+ * YouTube: Fetch Video Metadata via YouTube oEmbed (More reliable on Vercel)
  */
 app.get('/api/youtube/info', async (req, res) => {
     const { url } = req.query;
@@ -33,15 +33,19 @@ app.get('/api/youtube/info', async (req, res) => {
 
     try {
         console.log(`[YOUTUBE INFO] Fetching metadata for: ${url}`);
-        const info = await ytdl.getBasicInfo(url);
+        const response = await axios.get(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, {
+            httpsAgent: httpsAgent
+        });
+
+        // Map oEmbed response to what the frontend expects
         res.json({
-            title: info.videoDetails.title,
-            thumbnail_url: info.videoDetails.thumbnails[0]?.url,
-            author_name: info.videoDetails.author.name
+            title: response.data.title,
+            thumbnail_url: response.data.thumbnail_url,
+            author_name: response.data.author_name
         });
     } catch (error) {
         console.error('[YOUTUBE ERROR] Metadata fetch failed:', error.message);
-        res.status(500).json({ error: 'Failed to fetch video metadata' });
+        res.status(500).json({ error: 'Failed to fetch video metadata from YouTube' });
     }
 });
 
