@@ -118,25 +118,65 @@ youtubeFetch.addEventListener('click', async () => {
     youtubeFetch.disabled = true;
 
     try {
-        // Fetch metadata
+        // Fetch metadata (Backend)
         const infoResp = await fetch(`${API_BASE}/youtube/info?url=${encodeURIComponent(url)}`);
         const metadata = infoResp.ok ? await infoResp.json() : { thumbnail_url: '', title: 'Video', author_name: 'Unknown' };
 
-        // Fetch download link via Server (which handles API rotation and headers)
-        const downloadResp = await fetch(`${API_BASE}/youtube/download`, {
+        // 1. Try Backend Download (RapidAPI/Cobalt Mirrors)
+        try {
+            const downloadResp = await fetch(`${API_BASE}/youtube/download`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, format: currentFormat })
+            });
+
+            if (downloadResp.ok) {
+                const downloadData = await downloadResp.json();
+                renderYouTubeResults(url, metadata, downloadData);
+                return; // SUCCESS
+            }
+        } catch (e) {
+            console.warn('Backend Download Failed, trying Client-Side Fallback...', e);
+        }
+
+        // 2. Client-Side Fallback (Direct browser-to-Cobalt)
+        // This works because the Browser's IP is not blocked by Cobalt instances.
+        console.log('Attempting Client-Side Fallback...');
+        const cobaltResp = await fetch('https://cobalt-api.kwiatekmiki.com/', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, format: currentFormat })
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: url,
+                videoQuality: '720',
+                filenameStyle: 'basic',
+                isAudioOnly: currentFormat === 'audio'
+            })
         });
 
-        if (!downloadResp.ok) {
-            const errData = await downloadResp.json().catch(() => ({}));
-            throw new Error(errData.error || 'Failed to fetch download link');
-        }
-        const downloadData = await downloadResp.json();
+        if (cobaltResp.ok) {
+            const cobaltData = await cobaltResp.json();
 
-        // Render results
-        renderYouTubeResults(url, metadata, downloadData);
+            // Normalize result
+            let formats = [];
+            if (cobaltData.url) {
+                formats = [{ url: cobaltData.url, quality: '720p', format: 'mp4', hasAudio: true }];
+            } else if (cobaltData.picker && Array.isArray(cobaltData.picker)) {
+                formats = cobaltData.picker.map((p, i) => ({
+                    url: p.url,
+                    quality: p.quality || (p.type === 'video' ? 'Video' : 'Audio'),
+                    format: 'mp4',
+                    hasAudio: true,
+                    id: `cl-${i}`
+                }));
+            }
+
+            if (formats.length > 0) {
+                renderYouTubeResults(url, metadata, { title: metadata.title, formats });
+                return; // SUCCESS
+            }
+        }
+
+        throw new Error('All download methods failed. Please try a different URL or wait a few minutes.');
 
     } catch (error) {
         console.error('YouTube Fetch Error:', error);
