@@ -550,19 +550,29 @@ app.get('/api/proxy', async (req, res) => {
         res.setHeader('Content-Type', contentType);
 
         // BETTER CONTENT-LENGTH HANDLING
-        // Cobalt sends 'Estimated-Content-Length' for chunked streams
-        const contentLength = response.headers['content-length'] || response.headers['estimated-content-length'];
+        // WARNING: Do NOT set Content-Length from 'estimated-content-length' if transfer-encoding is chunked.
+        // It causes browsers to drop the connection if bytes don't match exactly.
+        const contentLength = response.headers['content-length'];
         if (contentLength) {
             res.setHeader('Content-Length', contentLength);
+        } else if (response.headers['estimated-content-length']) {
+            // Just log it, don't set it. Browser handles chunkedstream fine without length.
+            console.log(`[PROXY] Estimated size: ${response.headers['estimated-content-length']}`);
         }
+
+        // VERCEL TIMEOUT PREVENTION:
+        // If content-length indicates a large file (> 4.5MB which is Vercel limit for Serverless Function Payload? No, limit is 10s execution)
+        // actually we can't trust length.
+        // But if we encounter an error during piping, we might be too late to redirect.
 
         // Pipe the stream
         response.data.pipe(res);
 
     } catch (error) {
         console.error(`[PROXY CRITICAL ERROR] Failed for: ${url}`);
-        // ... (rest of error handling)
+        // If headers not sent, we can still return JSON error
         if (!res.headersSent) {
+            // If meaningful error, send it. If it was a timeout, user sees connection reset.
             res.status(500).json({ error: `Proxy failed: ${error.message}` });
         }
     }
