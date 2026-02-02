@@ -182,23 +182,17 @@ const renderYouTubeResults = (videoUrl, metadata, downloadData) => {
         }
 
         downloadData.formats.forEach(format => {
-            const hasAudio = format.hasAudio !== false; // Default to true if undefined
+            const hasAudio = format.hasAudio !== false;
 
-            // Universal Proxy Strategy:
-            // Always use the backend proxy for ALL downloads.
-            // valid Content-Type headers are critical for browser playback/download.
-            // If the upstream provider (Cobalt) sends no Content-Type, the browser might save it as text/html or generic file.
-            // Our proxy will force the correct headers.
-
-            // NOTE: We pass format.url (the direct video link).
-            // We use the proxy endpoint which streams data and sets Content-Type.
-            const finalUrl = `${API_BASE}/proxy?url=${encodeURIComponent(format.url)}&filename=${encodeURIComponent(downloadData.title || 'video')}.${format.format}`;
-
+            // Use direct URL. The client-side downloader in createDownloadButton 
+            // will handle the fetch and blob creation to fix headers and avoid
+            // server timeouts.
             const downloadItem = createDownloadButton(
-                finalUrl,
+                format.url,
                 format.quality,
                 format.format.toUpperCase(),
-                hasAudio
+                hasAudio,
+                downloadData.title || 'video'
             );
             youtubeDownloads.appendChild(downloadItem);
         });
@@ -385,21 +379,89 @@ const hideError = (platform) => {
     errorElement.style.display = 'none';
 };
 
-const createDownloadButton = (url, quality, format, hasAudio = true) => {
-    const item = document.createElement('a');
-    item.className = 'download-item';
-    item.href = url;
-    item.target = '_blank';
-    item.rel = 'noopener noreferrer';
+// Helper to download video directly via Client-Side Fetch
+// This bypasses Vercel proxy timeouts and forces correct Content-Type
+const downloadVideo = async (url, filename, format) => {
+    const btn = document.activeElement; // The clicked button
+    const originalText = btn.innerHTML;
 
-    // User requested to remove audio icon
-    const audioIcon = '';
+    try {
+        btn.innerHTML = `<div class="spinner-small"></div> Downloading...`;
+        btn.style.pointerEvents = 'none';
+        btn.style.opacity = '0.8';
 
-    item.innerHTML = `
-        <span class="quality">${quality}${audioIcon}</span>
-        <span class="type">${format.toUpperCase()} • Download</span>
-    `;
-    return item;
+        // Fetch the file directly from Cobalt (CORS allowed)
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+
+        const blob = await response.blob();
+
+        // Force correct MIME type based on format
+        // This fixes the "unplayable file" error if server sends wrong/missing headers
+        const mimeType = format.toLowerCase() === 'mp3' ? 'audio/mpeg' : 'video/mp4';
+        const validBlob = new Blob([blob], { type: mimeType });
+
+        // Create download link
+        const downloadUrl = window.URL.createObjectURL(validBlob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `${filename}.${format.toLowerCase()}`;
+        document.body.appendChild(a);
+        a.click();
+
+        // Cleanup
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+
+        btn.innerHTML = `<i data-feather="check"></i> Saved!`;
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
+            if (window.feather) feather.replace();
+        }, 3000);
+
+    } catch (err) {
+        console.error('Client-side Download Error:', err);
+        btn.innerHTML = `<i data-feather="alert-triangle"></i> Failed`;
+        alert(`Download failed: ${err.message}. Try the fallback link.`);
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.style.pointerEvents = 'auto';
+            btn.style.opacity = '1';
+            if (window.feather) feather.replace();
+        }, 3000);
+    }
+};
+
+const createDownloadButton = (url, quality, format, hasAudio = true, filename = 'video') => {
+    // Check if it's a direct Cobalt/RapidAPI URL (starts with http)
+    // or a proxy URL (starts with /api)
+    // We prefer direct client-side fetch for Cobalt/RapidAPI to avoid server timeouts
+    const isDirect = url.startsWith('http');
+
+    if (isDirect) {
+        const btn = document.createElement('button');
+        btn.className = 'download-item';
+        btn.innerHTML = `
+            <span class="quality">${quality}</span>
+            <span class="type">${format.toUpperCase()} • Download</span>
+        `;
+        btn.onclick = () => downloadVideo(url, filename, format);
+        return btn;
+    } else {
+        // Fallback for internal proxy links (e.g. Invidious)
+        const item = document.createElement('a');
+        item.className = 'download-item';
+        item.href = url;
+        item.target = '_blank';
+        item.rel = 'noopener noreferrer';
+        item.innerHTML = `
+            <span class="quality">${quality}</span>
+            <span class="type">${format.toUpperCase()} • Download</span>
+        `;
+        return item;
+    }
 };
 
 // Render Generic Results (for Facebook, Instagram, TikTok)
@@ -412,26 +474,23 @@ const renderGenericResults = (platform, data) => {
     const formats = data.formats || data.downloads || [];
 
     if (data.url) {
-        // Check if it's a server-side streaming endpoint (starts with /)
-        const isServerStream = data.url.startsWith('/');
-        const finalUrl = isServerStream ? `${API_BASE.replace('/api', '')}${data.url}` : `${API_BASE}/proxy?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(data.title || 'video')}.mp4`;
-
+        // Single result
         const downloadItem = createDownloadButton(
-            finalUrl,
+            data.url, // Use direct URL if possible
             data.quality || 'High Quality',
-            data.format || 'MP4'
+            data.format || 'MP4',
+            true,
+            data.title || 'video'
         );
         downloadsElement.appendChild(downloadItem);
     } else if (formats.length > 0) {
         formats.forEach(format => {
-            // Check if it's a server-side streaming endpoint (starts with /)
-            const isServerStream = format.url.startsWith('/');
-            const finalUrl = isServerStream ? `${API_BASE.replace('/api', '')}${format.url}` : `${API_BASE}/proxy?url=${encodeURIComponent(format.url)}&filename=${encodeURIComponent(data.title || 'video')}.${format.format || 'mp4'}`;
-
             const downloadItem = createDownloadButton(
-                finalUrl,
+                format.url,
                 format.quality || 'Standard',
-                format.format || 'MP4'
+                format.format || 'MP4',
+                true,
+                data.title || 'video'
             );
             downloadsElement.appendChild(downloadItem);
         });
