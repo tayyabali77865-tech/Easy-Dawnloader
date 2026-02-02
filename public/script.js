@@ -218,6 +218,12 @@ const renderYouTubeResults = (videoUrl, metadata, downloadData) => {
     document.getElementById('youtube-title-text').textContent = downloadData.title || metadata.title;
     document.getElementById('youtube-author').textContent = `By ${metadata.author_name}`;
 
+    // Show server version if available
+    const versionTag = document.querySelector('div[style*="opacity:0.3"]');
+    if (versionTag && metadata.server_version) {
+        versionTag.textContent = `v2.1.0-HyperResilient (Backend: ${metadata.server_version})`;
+    }
+
     // Create download options
     youtubeDownloads.innerHTML = '';
 

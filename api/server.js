@@ -1,3 +1,5 @@
+console.log('--- HYPER-RESILIENT BACKEND v2.1.0 ACTIVATED ---');
+
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -29,7 +31,8 @@ app.get('/api/youtube/info', async (req, res) => {
         res.json({
             title: response.data.title,
             thumbnail_url: response.data.thumbnail_url,
-            author_name: response.data.author_name
+            author_name: response.data.author_name,
+            server_version: '2.1.0-HyperResilient'
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch metadata' });
