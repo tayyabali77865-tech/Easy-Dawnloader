@@ -66,13 +66,12 @@ app.post('/api/youtube/download', async (req, res) => {
         const failureReasons = []; // Track why each method failed
 
         // ==========================================
-        // METHOD 1: Cobalt API (Multiple Instances)
+        // METHOD 1: Cobalt API v10 (New Working Instances)
         // ==========================================
         const cobaltInstances = [
-            'https://api.cobalt.tools/api/json',
-            'https://cobalt-api.vgest.io/api/json',
-            'https://api.v0.pw/api/json',
-            'https://co.wuk.sh/api/json'
+            'https://api.cobalt.tools/api/json',  // Official (might work with v10)
+            'https://cobalt-api.kwiatekmiki.com/api/json',  // Community instance
+            'https://co.wuk.sh/api/json'  // Alternative
         ];
 
         for (const endpoint of cobaltInstances) {
@@ -131,11 +130,14 @@ app.post('/api/youtube/download', async (req, res) => {
             const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
             if (videoIdMatch) {
                 const videoId = videoIdMatch[1];
+                // ==========================================
+                // METHOD 2: Invidious API (Working Instances - Feb 2026)
+                // ==========================================
                 const invidiousInstances = [
-                    'https://invidious.snopyta.org',
-                    'https://yewtu.be',
-                    'https://vid.puffyan.us',
-                    'https://inv.riverside.rocks'
+                    'https://inv.nadeko.net',
+                    'https://invidious.privacyredirect.com',
+                    'https://invidious.fdn.fr',
+                    'https://inv.tux.pizza'
                 ];
 
                 for (const instance of invidiousInstances) {
@@ -175,45 +177,51 @@ app.post('/api/youtube/download', async (req, res) => {
         }
 
         // ==========================================
-        // METHOD 3: Free Public API - Y2Mate (NO KEY NEEDED)
+        // METHOD 3: Free Public API - YT5s (NO KEY NEEDED)
         // ==========================================
         try {
-            console.log('[YOUTUBE] Trying Y2Mate Free API...');
+            console.log('[YOUTUBE] Trying YT5s Free API...');
             const videoId = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1];
             if (videoId) {
-                const y2mateResp = await axios.post('https://www.y2mate.com/mates/analyzeV2/ajax',
+                const yt5sResp = await axios.post('https://yt5s.io/api/ajaxSearch',
                     new URLSearchParams({
-                        k_query: `https://www.youtube.com/watch?v=${videoId}`,
-                        k_page: 'home',
-                        hl: 'en',
-                        q_auto: '0'
+                        q: `https://www.youtube.com/watch?v=${videoId}`,
+                        vt: 'home'
                     }),
                     {
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Accept': 'application/json'
                         },
                         timeout: 8000
                     }
                 );
 
-                if (y2mateResp.data && y2mateResp.data.status === 'ok') {
-                    console.log('[YOUTUBE SUCCESS] Y2Mate API worked!');
-                    return res.json({
-                        formats: [{
-                            url: `https://www.y2mate.com/youtube/${videoId}`,
-                            quality: 'Download Video (Y2Mate)',
-                            format: 'mp4',
-                            hasAudio: true,
-                            id: 'y2mate-1'
-                        }],
-                        title: y2mateResp.data.title || 'YouTube Video',
-                        note: 'Click to open Y2Mate download page (free, no registration needed)'
-                    });
+                if (yt5sResp.data && yt5sResp.data.status === 'ok') {
+                    console.log('[YOUTUBE SUCCESS] YT5s API worked!');
+                    // Extract download links from response
+                    const links = yt5sResp.data.links || {};
+                    const mp4Links = links.mp4 || {};
+                    const formats = Object.keys(mp4Links).map((quality, i) => ({
+                        url: `https://yt5s.io/api/ajaxConvert?id=${videoId}&quality=${quality}`,
+                        quality: `Download ${quality}`,
+                        format: 'mp4',
+                        hasAudio: true,
+                        id: `yt5s-${i}`
+                    }));
+
+                    if (formats.length > 0) {
+                        return res.json({
+                            formats: formats,
+                            title: yt5sResp.data.title || 'YouTube Video',
+                            note: 'Free download via YT5s (no registration needed)'
+                        });
+                    }
                 }
             }
         } catch (e) {
-            const reason = `Y2Mate: ${e.message}`;
+            const reason = `YT5s: ${e.message}`;
             failureReasons.push(reason);
             console.warn(`[YOUTUBE] ${reason}`);
         }
