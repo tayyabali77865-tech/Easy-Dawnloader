@@ -10,8 +10,6 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-// Serve static files from root directory
-app.use(express.static(path.join(__dirname, 'public')));
 
 
 // HTTPS Agent to bypass SSL certificate verification
@@ -572,30 +570,5 @@ app.post('/api/download', (req, res) => {
 // ========================================
 // SERVER STARTUP
 // ========================================
-app.listen(PORT, () => {
-    console.log('\n🚀 EasyDownloader Backend is up and running!');
-    console.log(`🏠 URL: http://localhost:${PORT}`);
-    console.log(`📁 Serving static files from: ${__dirname}`);
-    console.log('\n📡 Available Endpoints:');
-    console.log('   ✅ YouTube: /api/youtube/info, /api/youtube/download');
-    console.log('   ✅ Facebook: /api/facebook/download');
-    console.log('   ✅ Instagram: /api/instagram/download');
-    console.log('   ✅ TikTok: /api/tiktok/download');
-    console.log('');
-}).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`
-❌ ERROR: Port ${PORT} is already being used!
---------------------------------------------------
-This means an OLD version of the server is still running.
-Please CLOSE all other black terminal windows and 
-double-click "run_me.bat" again.
---------------------------------------------------
-        `);
-        process.exit(1);
-    } else {
-        console.error('Server error:', err);
-    }
-});
-
+// Final export for Vercel
 module.exports = app;
