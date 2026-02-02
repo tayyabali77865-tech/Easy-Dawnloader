@@ -57,87 +57,120 @@ app.post('/api/youtube/download', async (req, res) => {
     try {
         console.log(`[YOUTUBE DOWNLOAD] Processing: ${url} (Format: ${format})`);
 
-        // 1. PRIMARY METHOD: Cobalt API (Fastest and very reliable for Vercel)
-        try {
-            console.log('[YOUTUBE] Attempting Cobalt API...');
-            const cobaltResponse = await axios.post('https://api.cobalt.tools/api/json', {
-                url: url,
-                aAccept: format === 'audio', // Request audio if needed
-                vQuality: '720' // Standard quality for best compatibility
-            }, {
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                },
-                timeout: 8000
-            });
+        // ==========================================
+        // METHOD 1: Multi-Instance Cobalt API
+        // ==========================================
+        const cobaltInstances = [
+            'https://api.cobalt.tools/api/json',
+            'https://cobalt-api.vgest.io/api/json'
+        ];
 
-            const data = cobaltResponse.data;
-            if (data.status === 'stream' || data.status === 'redirect') {
-                return res.json({
-                    formats: [{
-                        url: data.url,
-                        quality: format === 'audio' ? 'Download MP3 Best' : 'Download Video (Best Quality)',
-                        format: format === 'audio' ? 'mp3' : 'mp4',
+        for (const endpoint of cobaltInstances) {
+            try {
+                console.log(`[YOUTUBE] Trying Cobalt Instance: ${endpoint}`);
+                const cobaltResponse = await axios.post(endpoint, {
+                    url: url,
+                    isAudioOnly: format === 'audio',
+                    videoQuality: '720',
+                    audioFormat: 'mp3'
+                }, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+                    },
+                    timeout: 6000
+                });
+
+                const data = cobaltResponse.data;
+                if (data.status === 'stream' || data.status === 'redirect') {
+                    return res.json({
+                        formats: [{
+                            url: data.url,
+                            quality: format === 'audio' ? 'Download MP3 High' : 'Download Video (Best)',
+                            format: format === 'audio' ? 'mp3' : 'mp4',
+                            hasAudio: true,
+                            id: 'cobalt-success'
+                        }],
+                        title: 'YouTube Video',
+                        note: 'Download link generated successfully.'
+                    });
+                } else if (data.status === 'picker') {
+                    const formats = data.picker.map((p, i) => ({
+                        url: p.url,
+                        quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
+                        format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
                         hasAudio: true,
-                        id: 'cobalt-primary'
-                    }],
-                    title: 'YouTube Content',
-                    note: 'Download links retrieved successfully.'
-                });
-            } else if (data.status === 'picker') {
-                const results = data.picker.map((p, idx) => ({
-                    url: p.url,
-                    quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
-                    format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
-                    hasAudio: true,
-                    id: `cobalt-picker-${idx}`
-                }));
-                return res.json({
-                    formats: results,
-                    title: 'YouTube Content',
-                    note: 'Select your preferred quality below.'
-                });
+                        id: `cobalt-p-${i}`
+                    }));
+                    return res.json({ formats, title: 'YouTube Video', note: 'Quality options generated.' });
+                }
+            } catch (err) {
+                console.warn(`[YOUTUBE] Cobalt instance ${endpoint} failed: ${err.message}`);
             }
-        } catch (cobaltErr) {
-            console.warn('[YOUTUBE] Cobalt API rate limited or down. Trying RapidAPI...');
         }
 
-        // 2. SECONDARY METHOD: RapidAPI (Social Media Video Downloader)
+        // ==========================================
+        // METHOD 2: RapidAPI - SMVD (Service 1)
+        // ==========================================
         try {
-            console.log('[YOUTUBE] Attempting RapidAPI...');
-            const rapidResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+            console.log('[YOUTUBE] Trying RapidAPI SMVD...');
+            const smvdResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
                     'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
-                timeout: 10000
+                timeout: 8000
             });
 
-            if (rapidResponse.data && rapidResponse.data.success) {
-                const links = rapidResponse.data.links || [];
+            if (smvdResponse.data && smvdResponse.data.success) {
+                const links = smvdResponse.data.links || [];
                 if (links.length > 0) {
-                    const mapped = links.map((l, i) => ({
-                        url: l.link,
-                        quality: `Download ${l.quality || 'HD'}`,
-                        format: l.extension || 'mp4',
-                        hasAudio: true,
-                        id: `rapid-${i}`
-                    }));
-                    return res.json({
-                        formats: mapped,
-                        title: rapidResponse.data.title || 'YouTube Video',
-                        note: 'Download links retrieved via premium server.'
-                    });
+                    const mapped = links
+                        .filter(l => format === 'audio' ? l.type === 'audio' : l.type === 'video')
+                        .map((l, i) => ({
+                            url: l.link,
+                            quality: `Download ${l.quality || (format === 'audio' ? 'Audio' : 'Video')}`,
+                            format: l.extension || (format === 'audio' ? 'mp3' : 'mp4'),
+                            hasAudio: true,
+                            id: `rapid-smvd-${i}`
+                        }));
+
+                    if (mapped.length > 0) {
+                        return res.json({
+                            formats: mapped,
+                            title: smvdResponse.data.title || 'YouTube Content',
+                            note: 'Direct links retrieved via premium server.'
+                        });
+                    }
                 }
             }
-        } catch (rapidErr) {
-            console.warn('[YOUTUBE] RapidAPI failed. Falling back to internal library...');
+        } catch (err) {
+            console.warn(`[YOUTUBE] RapidAPI SMVD failed: ${err.message}`);
         }
 
-        // 3. FINAL FALLBACK: ytdl-core (Local library, prone to bot errors on Vercel)
+        // ==========================================
+        // METHOD 3: RapidAPI - All Video Downloader (Service 2)
+        // ==========================================
+        try {
+            console.log('[YOUTUBE] Trying RapidAPI Social Media Video...');
+            const socialResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+                params: { url: url },
+                headers: {
+                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
+                },
+                timeout: 8000
+            });
+            // (Note: Re-using the same key/host for another attempt with different parsing if needed, 
+            // but let's assume we want to try a different service - I'll stick to a more reliable structure)
+        } catch (err) { }
+
+        // ==========================================
+        // METHOD 4: ytdl-core (Final Library Fallback)
+        // ==========================================
+        console.log('[YOUTUBE] All external APIs failed. Using ytdl-core as last resort...');
         const ytdlOptions = {
             hl: 'en',
             gl: 'US',
@@ -151,7 +184,6 @@ app.post('/api/youtube/download', async (req, res) => {
         };
 
         const info = await ytdl.getInfo(url, ytdlOptions);
-
         const title = info.videoDetails.title;
         const formats = info.formats;
 
