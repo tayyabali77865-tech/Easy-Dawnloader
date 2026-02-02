@@ -12,6 +12,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname))); // Serve static files from current directory
 
+// Explicitly serve index.html for the root route
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // HTTPS Agent to bypass SSL certificate verification
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
