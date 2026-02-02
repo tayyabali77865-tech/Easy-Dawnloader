@@ -536,6 +536,11 @@ app.get('/api/proxy', async (req, res) => {
         const targetFilename = filename || 'video.mp4';
         const ext = path.extname(targetFilename).toLowerCase().replace('.', '');
 
+        // Sanitize filename for HTTP headers (ASCII only)
+        // This prevents "Invalid character in header content" error
+        const safeFilename = targetFilename.replace(/[^\x20-\x7E]/g, '').replace(/,/g, '');
+        const encodedFilename = encodeURIComponent(targetFilename);
+
         // BETTER CONTENT-TYPE HANDLING
         // Cobalt often returns undefined Content-Type. We MUST guess it or the browser will fail.
         let contentType = response.headers['content-type'];
@@ -546,7 +551,8 @@ app.get('/api/proxy', async (req, res) => {
             else contentType = 'application/octet-stream';
         }
 
-        res.setHeader('Content-Disposition', `attachment; filename="${targetFilename}"`);
+        // Use RFC 5987 standard for filename with UTF-8 support
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
         res.setHeader('Content-Type', contentType);
 
         // BETTER CONTENT-LENGTH HANDLING
