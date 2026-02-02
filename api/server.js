@@ -4,8 +4,12 @@ const cors = require('cors');
 const path = require('path');
 const https = require('https');
 
+// Initialize environment variables (for local dev)
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267'; // Fallback for safety during transition
 
 // Middleware
 app.use(cors());
@@ -125,7 +129,7 @@ app.post('/api/youtube/download', async (req, res) => {
             const rResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
-                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-key': RAPIDAPI_KEY,
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
                 timeout: 8000
@@ -257,7 +261,7 @@ app.post('/api/facebook/download', async (req, res) => {
             headers: {
                 'Content-Type': 'application/json',
                 'x-rapidapi-host': 'facebook-media-downloader1.p.rapidapi.com',
-                'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267'
+                'x-rapidapi-key': RAPIDAPI_KEY
             },
             timeout: 10000 // 10s timeout for API
         }).catch(err => {
@@ -325,7 +329,7 @@ app.post('/api/instagram/download', async (req, res) => {
             const response = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
-                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-key': RAPIDAPI_KEY,
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
                 timeout: 8000
@@ -373,7 +377,7 @@ app.post('/api/tiktok/download', async (req, res) => {
             const response = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
-                    'x-rapidapi-key': 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267',
+                    'x-rapidapi-key': RAPIDAPI_KEY,
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
                 timeout: 8000
@@ -402,70 +406,9 @@ app.post('/api/tiktok/download', async (req, res) => {
     }
 });
 
-// TikTok streaming endpoint
-app.get('/api/tiktok/stream', async (req, res) => {
-    const { url, quality } = req.query;
-
-    if (!url) {
-        return res.status(400).send('URL is required');
-    }
-
-    try {
-        const { spawn } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
-
-        console.log(`[TIKTOK STREAM] Streaming video for: ${url}`);
-
-        res.setHeader('Content-Disposition', 'attachment; filename="tiktok_video.mp4"');
-        res.setHeader('Content-Type', 'video/mp4');
-
-        // Use format selection that ensures video+audio in a single file
-        const args = [
-            url,
-            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            '--merge-output-format', 'mp4',
-            '-o', '-',
-            '--no-check-certificates',
-            '--no-warnings',
-            '--prefer-free-formats',
-            '--no-update',
-            '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            '--add-header', 'Referer:https://www.tiktok.com/'
-        ];
-
-        const ytdlProcess = spawn(binaryPath, args);
-
-        ytdlProcess.stdout.pipe(res);
-
-        ytdlProcess.stderr.on('data', (data) => {
-            const msg = data.toString();
-            if (msg.includes('ERROR')) {
-                console.error(`[TIKTOK STREAM ERROR] ${msg}`);
-            }
-        });
-
-        ytdlProcess.on('close', (code) => {
-            if (code !== 0) {
-                console.error(`[TIKTOK STREAM] Process exited with code ${code}`);
-                if (!res.headersSent) {
-                    res.status(500).send('Stream failed');
-                }
-            }
-        });
-
-        ytdlProcess.on('error', (error) => {
-            console.error('[TIKTOK STREAM ERROR]:', error.message);
-            if (!res.headersSent) {
-                res.status(500).send('Stream error: ' + error.message);
-            }
-        });
-
-    } catch (error) {
-        console.error('[TIKTOK STREAM ERROR]:', error.message);
-        if (!res.headersSent) {
-            res.status(500).send('Stream error: ' + error.message);
-        }
-    }
+// TikTok streaming endpoint (Removed: Binary incompatibility with Vercel)
+app.get('/api/tiktok/stream', (req, res) => {
+    res.status(400).json({ error: 'Direct streaming is currently disabled. Please use the primary download links.' });
 });
 
 // ========================================
