@@ -20,11 +20,12 @@ const httpsAgent = new https.Agent({
 });
 
 // ========================================
-// YOUTUBE API ENDPOINTS
+// YOUTUBE API ENDPOINTS (Vercel Compatible)
 // ========================================
+const ytdl = require('@distube/ytdl-core');
 
 /**
- * YouTube: Fetch Video Metadata via YouTube oEmbed
+ * YouTube: Fetch Video Metadata
  */
 app.get('/api/youtube/info', async (req, res) => {
     const { url } = req.query;
@@ -32,265 +33,117 @@ app.get('/api/youtube/info', async (req, res) => {
 
     try {
         console.log(`[YOUTUBE INFO] Fetching metadata for: ${url}`);
-        const response = await axios.get(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, {
-            httpsAgent: httpsAgent
+        const info = await ytdl.getBasicInfo(url);
+        res.json({
+            title: info.videoDetails.title,
+            thumbnail_url: info.videoDetails.thumbnails[0]?.url,
+            author_name: info.videoDetails.author.name
         });
-        res.json(response.data);
     } catch (error) {
         console.error('[YOUTUBE ERROR] Metadata fetch failed:', error.message);
-        res.status(500).json({ error: 'Failed to fetch video metadata from YouTube' });
+        res.status(500).json({ error: 'Failed to fetch video metadata' });
     }
 });
 
 /**
- * YouTube: Fetch Download Link using local yt-dlp binary
+ * YouTube: Fetch Download Options
  */
 app.post('/api/youtube/download', async (req, res) => {
     const { url, format } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
     try {
-        const { exec } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        console.log(`[YOUTUBE DOWNLOAD] Fetching formats for: ${url}`);
+        const info = await ytdl.getInfo(url);
+        const title = info.videoDetails.title;
+        const formats = info.formats;
 
-        console.log(`[YOUTUBE DOWNLOAD] Fetching metadata via yt-dlp for: ${url}`);
+        if (format === 'audio') {
+            // Audio extraction
+            const audioFormats = formats.filter(f => f.hasAudio && !f.hasVideo);
+            const uniqueAudio = audioFormats.map(f => ({
+                url: f.url,
+                quality: `Download Audio (${f.audioBitrate}kbps)`,
+                bitrate: f.audioBitrate,
+                format: 'mp3',
+                id: f.itag
+            })).sort((a, b) => b.bitrate - a.bitrate);
 
-        // Arguments for metadata fetch
-        const args = [
-            `"${url}"`,
-            '--dump-single-json',
-            '--no-check-certificates',
-            '--no-warnings',
-            '--prefer-free-formats',
-            '--no-update',
-            '--add-header', '"User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"',
-            '--add-header', '"Referer:https://www.youtube.com/"'
-        ];
+            res.json({
+                formats: uniqueAudio,
+                title: title,
+                note: 'Direct audio links generated.'
+            });
 
-        // Execute yt-dlp
-        exec(`"${binaryPath}" ${args.join(' ')}`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-            if (error) {
-                console.error('[YOUTUBE ERROR] yt-dlp failed:', error.message);
-                return res.status(500).json({ error: 'Failed to fetch video info via yt-dlp' });
-            }
+        } else {
+            // Video download
+            // Filter for formats that have both video and audio (progressive)
+            const videoFormats = formats.filter(f => f.hasVideo && f.hasAudio);
 
-            try {
-                const info = JSON.parse(stdout);
-                const title = info.title;
-                const formats = info.formats || [];
+            const uniqueVideos = videoFormats.map(f => ({
+                url: f.url,
+                quality: `Download ${f.qualityLabel || 'Unknown'}`,
+                height: f.height,
+                format: f.container || 'mp4',
+                hasAudio: true,
+                id: f.itag
+            })).sort((a, b) => b.height - a.height);
 
-                if (format === 'audio') {
-                    // Audio download (MP3)
-                    const audioFormats = formats.filter(f => f.acodec !== 'none' && f.vcodec === 'none');
-
-                    const uniqueAudio = [];
-                    const seenBitrates = new Set();
-
-                    audioFormats.forEach(f => {
-                        const bitrate = Math.round(f.abr || 0);
-                        if (bitrate > 0 && !seenBitrates.has(bitrate)) {
-                            seenBitrates.add(bitrate);
-                            uniqueAudio.push({
-                                url: f.url,
-                                quality: `Download Audio (${bitrate}kbps)`,
-                                bitrate: bitrate,
-                                format: 'mp3',
-                                id: f.format_id
-                            });
-                        }
-                    });
-
-                    uniqueAudio.sort((a, b) => b.bitrate - a.bitrate);
-
-                    res.json({
-                        formats: uniqueAudio,
-                        title: title,
-                        note: 'Downloads are proxied through the server.'
-                    });
-
-                } else {
-                    // Video download - Strictly filter for formats with audio
-                    const videoFormats = formats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none');
-                    const formatsByHeight = new Map();
-
-                    videoFormats.forEach(f => {
-                        const height = f.height;
-                        if (!height) return;
-
-                        const currentBest = formatsByHeight.get(height);
-
-                        // Since we already filtered for hasAudio, we just take the best for each height
-                        if (!currentBest) {
-                            formatsByHeight.set(height, f);
-                        }
-                    });
-
-                    // Convert to array
-                    const uniqueVideos = Array.from(formatsByHeight.values()).map(f => ({
-                        url: f.url,
-                        quality: `Download ${f.height}p`,
-                        height: f.height,
-                        format: f.ext || 'mp4',
-                        hasAudio: true,
-                        id: f.format_id
-                    }));
-
-                    uniqueVideos.sort((a, b) => b.height - a.height);
-
-                    console.log(`[YOUTUBE SUCCESS] Found ${uniqueVideos.length} refined options (all with audio)`);
-
-                    res.json({
-                        formats: uniqueVideos,
-                        title: title,
-                        note: 'All downloads include audio.'
-                    });
-                }
-
-            } catch (parseErr) {
-                console.error('[YOUTUBE ERROR] JSON parse failed:', parseErr);
-                res.status(500).json({ error: 'Failed to parse video metadata' });
-            }
-        });
+            res.json({
+                formats: uniqueVideos,
+                title: title,
+                note: 'Direct video links generated.'
+            });
+        }
 
     } catch (error) {
         console.error('[YOUTUBE ERROR]:', error.message);
-        res.status(500).json({ error: `Internal server error: ${error.message}` });
+        res.status(500).json({ error: `Failed to fetch formats: ${error.message}` });
     }
 });
 
 /**
- * YouTube: Stream Download (Proxy)
- * Pipes the video content directly from local yt-dlp binary to the client response.
+ * YouTube: Stream Download (Proxy) - Needed if direct links 403
  */
 app.get('/api/youtube/stream-download', async (req, res) => {
     const { url, id, ext } = req.query;
-
-    if (!url || !id) {
-        return res.status(400).send('URL and ID are required');
-    }
+    if (!url) return res.status(400).send('URL is required');
 
     try {
-        const { spawn } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        // For ytdl-core, we can use the original video URL and the 'itag' (id)
+        // note: 'id' in frontend was format_id (string), here itag is number.
+        // If the frontend sends the direct googlevideo URL, we can proxy it via our generic proxy
+        // But let's try to stream using ytdl-core given the original video URL
 
-        console.log(`[YOUTUBE PROXY] Streaming format ${id} for: ${url} (ext: ${ext})`);
+        // Problem: The frontend passes the DIRECT googlevideo.com URL to this endpoint in some flows?
+        // No, in the rewrite above, I'm sending back f.url which IS the direct link.
+        // If the frontend tries to download that directly, it might get 403.
+        // If it sends it here, we proxy it.
 
-        // Set headers based on format
-        const isAudio = ext === 'mp3';
-        const filename = `download.${ext || 'mp4'}`;
-        const contentType = isAudio ? 'audio/mpeg' : 'video/mp4';
+        console.log(`[YOUTUBE STREAM] Proxying: ${url}`);
 
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Type', contentType);
-
-        // Spawn yt-dlp to stream content to stdout
-        const args = [
-            url,
-            '-f', id,
-            '-o', '-',
-            '--no-check-certificates',
-            '--no-warnings',
-            '--prefer-free-formats',
-            '--no-update'
-        ];
-
-        const ytdlProcess = spawn(binaryPath, args);
-
-        ytdlProcess.stdout.pipe(res);
-
-        ytdlProcess.stderr.on('data', (data) => {
-            // Only log errors, not progress
-            const msg = data.toString();
-            if (msg.includes('ERROR')) console.error(`[YOUTUBE STREAM ERROR] ${msg}`);
-        });
-
-        ytdlProcess.on('close', (code) => {
-            if (code !== 0) {
-                console.log(`[YOUTUBE STREAM] Exited with code ${code}`);
+        // Simple proxy for the direct URL
+        const response = await axios({
+            method: 'get',
+            url: url,
+            responseType: 'stream',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
             }
         });
+
+        res.setHeader('Content-Disposition', `attachment; filename="download.${ext || 'mp4'}"`);
+        response.data.pipe(res);
 
     } catch (error) {
         console.error('[YOUTUBE PROXY ERROR]:', error.message);
-        if (!res.headersSent) {
-            res.status(500).send('Proxy error: ' + error.message);
-        }
+        res.status(500).send('Proxy error');
     }
 });
 
-/**
- * YouTube: Stream video/audio through server (Legacy Stream Endpoint for /stream)
- */
-app.get('/api/youtube/stream', async (req, res) => {
-    // Legacy endpoint, keeping it but it might fail if we removed youtube-dl-exec usage?
-    // Actually our new setup downloads yt-dlp.exe. 
-    // This endpoint spawns 'yt-dlp'. If we rely on yt-dlp.exe in CWD, we should update this too.
-    // BUT the user didn't ask to fix this one specifically. I'll leave it or update it to be safe.
-    // I'll update it to use local binary.
-    const { v: videoId, type, title } = req.query;
-
-    if (!videoId) {
-        return res.status(400).send('Video ID is required');
-    }
-
-    try {
-        const { spawn } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
-        const url = `https://www.youtube.com/watch?v=${videoId}`;
-
-        console.log(`[YOUTUBE STREAM] Streaming ${type} for: ${videoId}`);
-
-        // Set appropriate headers
-        const filename = `${title || videoId}.${type === 'audio' ? 'mp3' : 'mp4'}`;
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
-
-        // Build youtube-dl command
-        const args = [
-            url,
-            '-o', '-',  // Output to stdout
-            '--no-check-certificates',
-            '--no-warnings',
-            '--prefer-free-formats',
-            '--no-update'
-        ];
-
-        if (type === 'audio') {
-            args.push('-x');  // Extract audio
-            args.push('--audio-format', 'mp3');
-            args.push('--audio-quality', '0');  // Best quality
-        } else {
-            args.push('-f', 'best[ext=mp4]');  // Best MP4 format
-        }
-
-        // Spawn youtube-dl process
-        const ytdlProcess = spawn(binaryPath, args);
-
-        ytdlProcess.stdout.pipe(res);
-
-        ytdlProcess.stderr.on('data', (data) => {
-            console.error(`[YOUTUBE STREAM] ${data.toString()}`);
-        });
-
-        ytdlProcess.on('error', (error) => {
-            console.error('[YOUTUBE STREAM ERROR]:', error.message);
-            if (!res.headersSent) {
-                res.status(500).send('Stream error: ' + error.message);
-            }
-        });
-
-        ytdlProcess.on('close', (code) => {
-            if (code !== 0) {
-                console.error(`[YOUTUBE STREAM] Process exited with code ${code}`);
-            }
-        });
-
-    } catch (error) {
-        console.error('[YOUTUBE STREAM ERROR]:', error.message);
-        if (!res.headersSent) {
-            res.status(500).send('Failed to stream video: ' + error.message);
-        }
-    }
+// Legacy stream endpoint (stubbed)
+app.get('/api/youtube/stream', (req, res) => {
+    res.status(400).send('Endpoint deprecated, use direct download');
 });
 
 // ========================================
