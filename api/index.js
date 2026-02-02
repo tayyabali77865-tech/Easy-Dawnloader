@@ -56,7 +56,76 @@ app.post('/api/youtube/download', async (req, res) => {
 
     try {
         console.log(`[YOUTUBE DOWNLOAD] Fetching formats for: ${url}`);
-        const info = await ytdl.getInfo(url);
+
+        // Options to bypass "Sign in to confirm you're not a bot"
+        const ytdlOptions = {
+            hl: 'en',
+            gl: 'US',
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                    'Accept-Language': 'en-US,en;q=1.0,en;q=0.9',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Referer': 'https://www.youtube.com/',
+                }
+            }
+        };
+
+        let info;
+        try {
+            info = await ytdl.getInfo(url, ytdlOptions);
+        } catch (ytdlErr) {
+            console.warn('[YOUTUBE DOWNLOAD] ytdl-core failed, attempting Cobalt fallback...', ytdlErr.message);
+
+            // FALLBACK TO COBALT API (Zero-Configuration, Reliable)
+            try {
+                const cobaltResponse = await axios.post('https://api.cobalt.tools/api/json', {
+                    url: url
+                }, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0'
+                    },
+                    timeout: 10000
+                });
+
+                const data = cobaltResponse.data;
+                if (data.status === 'stream' || data.status === 'redirect') {
+                    // Single stream result
+                    return res.json({
+                        formats: [{
+                            url: data.url,
+                            quality: 'Download Video (Best Quality)',
+                            format: 'mp4',
+                            hasAudio: true,
+                            id: 'cobalt'
+                        }],
+                        title: 'YouTube Video',
+                        note: 'Download links retrieved via global fallback.'
+                    });
+                } else if (data.status === 'picker') {
+                    // Multiple formats
+                    const formats = data.picker.map((p, index) => ({
+                        url: p.url,
+                        quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
+                        format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
+                        hasAudio: true,
+                        id: `cobalt-${index}`
+                    }));
+                    return res.json({
+                        formats: formats,
+                        title: 'YouTube Video',
+                        note: 'Download links retrieved via global fallback.'
+                    });
+                }
+                throw new Error('Cobalt API returned unexpected status');
+            } catch (cobaltErr) {
+                console.error('[YOUTUBE FALLBACK ERROR]:', cobaltErr.message);
+                throw ytdlErr; // Re-throw original error if fallback also fails
+            }
+        }
+
         const title = info.videoDetails.title;
         const formats = info.formats;
 
