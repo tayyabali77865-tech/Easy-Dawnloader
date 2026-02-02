@@ -512,75 +512,19 @@ app.get('/api/proxy', async (req, res) => {
     }
 
     try {
-        console.log(`[PROXY] Streaming: ${url}`);
+        console.log(`[PROXY] Redirecting to: ${url}`);
 
-        // Set dynamic referer based on URL
-        let referer = 'https://www.google.com/';
-        if (url.includes('facebook.com')) referer = 'https://www.facebook.com/';
-        else if (url.includes('instagram.com')) referer = 'https://www.instagram.com/';
-        else if (url.includes('tiktok.com')) referer = 'https://www.tiktok.com/';
+        // VERCEL LIMITATION FIX:
+        // We cannot stream large files through Vercel Serverless Functions due to 
+        // execution time limits (10s) and body size limits (4.5MB).
+        // Attempting to pipe streams results in 0-byte downloads or timeouts.
+        // We MUST redirect the client to the upstream URL directly.
 
-        const response = await axios({
-            method: 'get',
-            url: url,
-            responseType: 'stream',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Referer': referer
-            },
-            timeout: 60000 // Increased timeout for large files
-        });
-
-        // Set headers for download
-        const targetFilename = filename || 'video.mp4';
-        const ext = path.extname(targetFilename).toLowerCase().replace('.', '');
-
-        // Sanitize filename for HTTP headers (ASCII only)
-        // This prevents "Invalid character in header content" error
-        const safeFilename = targetFilename.replace(/[^\x20-\x7E]/g, '').replace(/,/g, '');
-        const encodedFilename = encodeURIComponent(targetFilename);
-
-        // BETTER CONTENT-TYPE HANDLING
-        // Cobalt often returns undefined Content-Type. We MUST guess it or the browser will fail.
-        let contentType = response.headers['content-type'];
-        if (!contentType || contentType === 'application/octet-stream') {
-            if (ext === 'mp4') contentType = 'video/mp4';
-            else if (ext === 'mp3') contentType = 'audio/mpeg';
-            else if (ext === 'm4a') contentType = 'audio/mp4';
-            else contentType = 'application/octet-stream';
-        }
-
-        // Use RFC 5987 standard for filename with UTF-8 support
-        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
-        res.setHeader('Content-Type', contentType);
-
-        // BETTER CONTENT-LENGTH HANDLING
-        // WARNING: Do NOT set Content-Length from 'estimated-content-length' if transfer-encoding is chunked.
-        // It causes browsers to drop the connection if bytes don't match exactly.
-        const contentLength = response.headers['content-length'];
-        if (contentLength) {
-            res.setHeader('Content-Length', contentLength);
-        } else if (response.headers['estimated-content-length']) {
-            // Just log it, don't set it. Browser handles chunkedstream fine without length.
-            console.log(`[PROXY] Estimated size: ${response.headers['estimated-content-length']}`);
-        }
-
-        // VERCEL TIMEOUT PREVENTION:
-        // If content-length indicates a large file (> 4.5MB which is Vercel limit for Serverless Function Payload? No, limit is 10s execution)
-        // actually we can't trust length.
-        // But if we encounter an error during piping, we might be too late to redirect.
-
-        // Pipe the stream
-        response.data.pipe(res);
+        return res.redirect(302, url);
 
     } catch (error) {
-        console.error(`[PROXY CRITICAL ERROR] Failed for: ${url}`);
-        // If headers not sent, we can still return JSON error
-        if (!res.headersSent) {
-            // If meaningful error, send it. If it was a timeout, user sees connection reset.
-            res.status(500).json({ error: `Proxy failed: ${error.message}` });
-        }
+        console.error(`[PROXY ERROR] Direct redirect failed? ${error.message}`);
+        res.status(500).send('Redirect failed');
     }
 });
 
