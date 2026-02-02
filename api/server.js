@@ -170,73 +170,123 @@ app.post('/api/youtube/download', async (req, res) => {
         }
 
         // ==========================================
-        // METHOD 3: RapidAPI Fallback (Social Media Downloader)
+        // METHOD 3: Free Public API - Y2Mate (NO KEY NEEDED)
         // ==========================================
         try {
-            console.log(`[YOUTUBE] Attempting RapidAPI fallback (using ${process.env.YOUTUBE_API_KEY ? 'Specific' : 'Global'} Key)...`);
-            const rResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
-                params: { url: url },
-                headers: {
-                    'x-rapidapi-key': YOUTUBE_API_KEY,
-                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
-                },
-                timeout: 8000
-            });
-            if (rResponse.data && rResponse.data.success) {
-                const links = rResponse.data.links || [];
-                if (links.length > 0) {
-                    const mapped = links
-                        .filter(l => format === 'audio' ? l.type === 'audio' : l.type === 'video')
-                        .map((l, i) => ({
-                            url: l.link,
-                            quality: l.quality || 'Download Now',
-                            format: l.extension || 'mp4',
-                            hasAudio: true,
-                            id: `rapid-${i}`
-                        }));
-                    if (mapped.length > 0) {
-                        console.log(`[YOUTUBE SUCCESS] RapidAPI linked successfully.`);
-                        return res.json({ formats: mapped, title: rResponse.data.title || 'YouTube Video' });
+            console.log('[YOUTUBE] Trying Y2Mate Free API...');
+            const videoId = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1];
+            if (videoId) {
+                const y2mateResp = await axios.post('https://www.y2mate.com/mates/analyzeV2/ajax',
+                    new URLSearchParams({
+                        k_query: `https://www.youtube.com/watch?v=${videoId}`,
+                        k_page: 'home',
+                        hl: 'en',
+                        q_auto: '0'
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        },
+                        timeout: 8000
                     }
+                );
+
+                if (y2mateResp.data && y2mateResp.data.status === 'ok') {
+                    console.log('[YOUTUBE SUCCESS] Y2Mate API worked!');
+                    return res.json({
+                        formats: [{
+                            url: `https://www.y2mate.com/youtube/${videoId}`,
+                            quality: 'Download Video (Y2Mate)',
+                            format: 'mp4',
+                            hasAudio: true,
+                            id: 'y2mate-1'
+                        }],
+                        title: y2mateResp.data.title || 'YouTube Video',
+                        note: 'Click to open Y2Mate download page (free, no registration needed)'
+                    });
                 }
             }
-            console.warn(`[YOUTUBE] RapidAPI succeeded but returned no links or success: false`);
         } catch (e) {
-            console.error(`[YOUTUBE] RapidAPI Method 3 failed: ${e.response?.status || e.message}`);
-            if (e.response?.status === 401 || e.response?.status === 403) {
-                console.error(`[YOUTUBE] CRITICAL: RapidAPI Key migh be invalid or unsubscribed.`);
-            }
+            console.warn(`[YOUTUBE] Y2Mate failed: ${e.message}`);
         }
 
         // ==========================================
-        // METHOD 5: Alternative RapidAPI (YT API)
+        // METHOD 4: RapidAPI Fallback (OPTIONAL - only if key is set)
         // ==========================================
-        try {
-            console.log(`[YOUTUBE] Trying Method 5 (YT API)...`);
-            const ytResponse = await axios.get('https://yt-api.p.rapidapi.com/dl', {
-                params: { id: url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1] },
-                headers: {
-                    'x-rapidapi-key': YOUTUBE_API_KEY,
-                    'x-rapidapi-host': 'yt-api.p.rapidapi.com'
-                },
-                timeout: 8000
-            });
-
-            if (ytResponse.data && ytResponse.data.status === 'OK') {
-                const formats = (ytResponse.data.formats || []).map((f, i) => ({
-                    url: f.url,
-                    quality: f.qualityLabel || 'Download',
-                    format: 'mp4',
-                    hasAudio: true,
-                    id: `ytapi-${i}`
-                }));
-                if (formats.length > 0) {
-                    console.log(`[YOUTUBE SUCCESS] Method 5 Succeeded.`);
-                    return res.json({ formats: formats, title: ytResponse.data.title || 'YouTube Video' });
+        if (process.env.YOUTUBE_API_KEY) {
+            try {
+                console.log(`[YOUTUBE] Attempting RapidAPI fallback (using Specific Key)...`);
+                const rResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+                    params: { url: url },
+                    headers: {
+                        'x-rapidapi-key': YOUTUBE_API_KEY,
+                        'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
+                    },
+                    timeout: 8000
+                });
+                if (rResponse.data && rResponse.data.success) {
+                    const links = rResponse.data.links || [];
+                    if (links.length > 0) {
+                        const mapped = links
+                            .filter(l => format === 'audio' ? l.type === 'audio' : l.type === 'video')
+                            .map((l, i) => ({
+                                url: l.link,
+                                quality: l.quality || 'Download Now',
+                                format: l.extension || 'mp4',
+                                hasAudio: true,
+                                id: `rapid-${i}`
+                            }));
+                        if (mapped.length > 0) {
+                            console.log(`[YOUTUBE SUCCESS] RapidAPI linked successfully.`);
+                            return res.json({ formats: mapped, title: rResponse.data.title || 'YouTube Video' });
+                        }
+                    }
+                }
+                console.warn(`[YOUTUBE] RapidAPI succeeded but returned no links`);
+            } catch (e) {
+                console.error(`[YOUTUBE] RapidAPI Method 4 failed: ${e.response?.status || e.message}`);
+                if (e.response?.status === 401 || e.response?.status === 403) {
+                    console.error(`[YOUTUBE] CRITICAL: RapidAPI Key might be invalid.`);
                 }
             }
-        } catch (e) {
-            console.warn(`[YOUTUBE] Method 5 failed: ${e.response?.status || e.message}`);
+        } else {
+            console.log('[YOUTUBE] Skipping RapidAPI (no YOUTUBE_API_KEY set)');
+        }
+
+        // ==========================================
+        // METHOD 5: Alternative RapidAPI (YT API) - OPTIONAL
+        // ==========================================
+        if (process.env.YOUTUBE_API_KEY) {
+            try {
+                console.log(`[YOUTUBE] Trying Method 5 (YT API)...`);
+                const ytResponse = await axios.get('https://yt-api.p.rapidapi.com/dl', {
+                    params: { id: url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1] },
+                    headers: {
+                        'x-rapidapi-key': YOUTUBE_API_KEY,
+                        'x-rapidapi-host': 'yt-api.p.rapidapi.com'
+                    },
+                    timeout: 8000
+                });
+
+                if (ytResponse.data && ytResponse.data.status === 'OK') {
+                    const formats = (ytResponse.data.formats || []).map((f, i) => ({
+                        url: f.url,
+                        quality: f.qualityLabel || 'Download',
+                        format: 'mp4',
+                        hasAudio: true,
+                        id: `ytapi-${i}`
+                    }));
+                    if (formats.length > 0) {
+                        console.log(`[YOUTUBE SUCCESS] Method 5 Succeeded.`);
+                        return res.json({ formats: formats, title: ytResponse.data.title || 'YouTube Video' });
+                    }
+                }
+            } catch (e) {
+                console.warn(`[YOUTUBE] Method 5 failed: ${e.response?.status || e.message}`);
+            }
+        } else {
+            console.log('[YOUTUBE] Skipping Method 5 (no YOUTUBE_API_KEY set)');
         }
 
         // ==========================================
@@ -262,23 +312,21 @@ app.post('/api/youtube/download', async (req, res) => {
                         id: f.itag
                     })),
                     title: info.videoDetails.title
-                });
-            }
             throw new Error('No compatible formats found');
-        } catch (err) {
-            console.error('[YOUTUBE LIBRARY ERROR]:', err.message);
-            return res.status(500).json({
-                error: 'YouTube is currently blocking this request (All 5 fallback layers failed).',
-                details: `Error: ${err.message}. If you have set YOUTUBE_API_KEY, please check your Vercel logs for 401/403 status codes.`,
-                hint: 'Try adding a fresh RAPIDAPI_KEY to your Vercel Environment Variables and Re-deploying.'
-            });
-        }
+                } catch (err) {
+                    console.error('[YOUTUBE LIBRARY ERROR]:', err.message);
+                    return res.status(500).json({
+                        error: 'All download methods failed (including free public APIs).',
+                        details: `Error: ${err.message}`,
+                        hint: 'This video might be age-restricted or private. For better reliability, check SETUP.md to add your own RapidAPI key (free tier available).'
+                    });
+                }
 
-    } catch (globalErr) {
-        console.error('[GLOBAL YOUTUBE ERROR]:', globalErr.message);
-        res.status(500).json({ error: 'Internal Server Error during YouTube processing' });
-    }
-});
+            } catch (globalErr) {
+                console.error('[GLOBAL YOUTUBE ERROR]:', globalErr.message);
+                res.status(500).json({ error: 'Internal Server Error during YouTube processing' });
+            }
+        });
 
 
 
