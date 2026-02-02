@@ -138,11 +138,19 @@ youtubeFetch.addEventListener('click', async () => {
             throw new Error(errData.error || 'Failed to fetch download link');
         }
         const downloadData = await downloadResp.json();
-
         renderYouTubeResults(url, metadata, downloadData);
     } catch (error) {
-        console.error('YouTube Error:', error);
-        showError('youtube', error.message);
+        console.error('YouTube Fetch Error:', error);
+
+        let errorMessage = error.message;
+        // Check if the server returned detailed hints
+        if (errorMessage.includes('All 5 fallback layers failed')) {
+            errorMessage = `<strong>YouTube Blocked (5-Layer Fallback Failed)</strong><br><br>` +
+                `Please check if your <strong>YOUTUBE_API_KEY</strong> is set in Vercel. <br>` +
+                `<small>Try adding a fresh RAPIDAPI_KEY to your Vercel Dashboard and Re-deploying.</small>`;
+        }
+
+        showError('youtube', errorMessage);
     } finally {
         youtubeLoader.style.display = 'none';
         youtubeFetch.disabled = false;

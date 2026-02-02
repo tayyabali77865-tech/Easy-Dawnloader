@@ -268,8 +268,9 @@ app.post('/api/youtube/download', async (req, res) => {
         } catch (err) {
             console.error('[YOUTUBE LIBRARY ERROR]:', err.message);
             return res.status(500).json({
-                error: 'YouTube is currently blocking this request on the server. Please try again in 5 minutes or use a different video.',
-                details: err.message
+                error: 'YouTube is currently blocking this request (All 5 fallback layers failed).',
+                details: `Error: ${err.message}. If you have set YOUTUBE_API_KEY, please check your Vercel logs for 401/403 status codes.`,
+                hint: 'Try adding a fresh RAPIDAPI_KEY to your Vercel Environment Variables and Re-deploying.'
             });
         }
 
