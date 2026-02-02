@@ -9,7 +9,11 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267'; // Fallback for safety during transition
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267';
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || RAPIDAPI_KEY;
+const FACEBOOK_API_KEY = process.env.FACEBOOK_API_KEY || RAPIDAPI_KEY;
+const INSTAGRAM_API_KEY = process.env.INSTAGRAM_API_KEY || RAPIDAPI_KEY;
+const TIKTOK_API_KEY = process.env.TIKTOK_API_KEY || RAPIDAPI_KEY;
 
 // Middleware
 app.use(cors());
@@ -168,11 +172,11 @@ app.post('/api/youtube/download', async (req, res) => {
         // METHOD 3: RapidAPI Fallback (Social Media Downloader)
         // ==========================================
         try {
-            console.log('[YOUTUBE] Attempting RapidAPI fallback...');
+            console.log(`[YOUTUBE] Attempting RapidAPI fallback (using ${process.env.YOUTUBE_API_KEY ? 'Specific' : 'Global'} Key)...`);
             const rResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
-                    'x-rapidapi-key': RAPIDAPI_KEY,
+                    'x-rapidapi-key': YOUTUBE_API_KEY,
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
                 timeout: 8000
@@ -297,14 +301,14 @@ app.post('/api/facebook/download', async (req, res) => {
 
     try {
         // 1. Try RapidAPI first as requested
-        console.log(`[FACEBOOK] Attempting RapidAPI...`);
+        console.log(`[FACEBOOK] Attempting RapidAPI (using ${process.env.FACEBOOK_API_KEY ? 'Specific' : 'Global'} Key)...`);
         const response = await axios.post('https://facebook-media-downloader1.p.rapidapi.com/get_media', {
             url: url
         }, {
             headers: {
                 'Content-Type': 'application/json',
                 'x-rapidapi-host': 'facebook-media-downloader1.p.rapidapi.com',
-                'x-rapidapi-key': RAPIDAPI_KEY
+                'x-rapidapi-key': FACEBOOK_API_KEY
             },
             timeout: 10000 // 10s timeout for API
         }).catch(err => {
@@ -369,10 +373,11 @@ app.post('/api/instagram/download', async (req, res) => {
     try {
         // 1. Primary: RapidAPI
         try {
+            console.log(`[INSTAGRAM] Attempting RapidAPI (using ${process.env.INSTAGRAM_API_KEY ? 'Specific' : 'Global'} Key)...`);
             const response = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
-                    'x-rapidapi-key': RAPIDAPI_KEY,
+                    'x-rapidapi-key': INSTAGRAM_API_KEY,
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
                 timeout: 8000
@@ -417,10 +422,11 @@ app.post('/api/tiktok/download', async (req, res) => {
 
         // 1. Primary: RapidAPI
         try {
+            console.log(`[TIKTOK] Attempting RapidAPI (using ${process.env.TIKTOK_API_KEY ? 'Specific' : 'Global'} Key)...`);
             const response = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
                 params: { url: url },
                 headers: {
-                    'x-rapidapi-key': RAPIDAPI_KEY,
+                    'x-rapidapi-key': TIKTOK_API_KEY,
                     'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
                 },
                 timeout: 8000
