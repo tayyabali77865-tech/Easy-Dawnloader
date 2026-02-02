@@ -4,45 +4,35 @@ const cors = require('cors');
 const path = require('path');
 const https = require('https');
 
-// Initialize environment variables (for local dev)
+// Initialize environment variables
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Use User's RapidAPI Key
+// RapidAPI Key Handling
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'a30165b88amsh484b669fb808d67p186fd9jsn565d1f2fc267';
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// HTTPS Agent to bypass SSL certificate verification
-const httpsAgent = new https.Agent({
-    rejectUnauthorized: false
-});
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 /**
- * YouTube: Fetch Video Metadata via YouTube oEmbed
+ * YouTube: Fetch Metadata
  */
 app.get('/api/youtube/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
-
     try {
-        const response = await axios.get(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, {
-            httpsAgent: httpsAgent,
-            timeout: 5000
-        });
-
+        const response = await axios.get(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, { timeout: 5000 });
         res.json({
             title: response.data.title,
             thumbnail_url: response.data.thumbnail_url,
             author_name: response.data.author_name
         });
     } catch (error) {
-        console.error('[YOUTUBE ERROR] Metadata fetch failed:', error.message);
-        res.status(500).json({ error: 'Failed to fetch video metadata' });
+        res.status(500).json({ error: 'Failed to fetch metadata' });
     }
 });
 
@@ -53,153 +43,143 @@ app.post('/api/youtube/download', async (req, res) => {
     const { url, format } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
-    console.log(`[YOUTUBE DOWNLOAD] Processing: ${url}`);
+    console.log(`[YOUTUBE DOWNLOAD] URL: ${url}`);
     const failureReasons = [];
 
-    try {
-        // ==========================================
-        // METHOD 1: RapidAPI (MOST RELIABLE ON VERCEL)
-        // ==========================================
-        if (RAPIDAPI_KEY) {
-            try {
-                console.log(`[Attempt] RapidAPI: social-media-video-downloader...`);
-                const rResponse = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
-                    params: { url: url },
-                    headers: {
-                        'x-rapidapi-key': RAPIDAPI_KEY,
-                        'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
-                    },
-                    timeout: 8000
-                });
-
-                if (rResponse.data && rResponse.data.success && rResponse.data.links) {
-                    const links = rResponse.data.links;
-                    // Flexible mapping - grab anything that looks like a video or audio
-                    const mapped = links.map((l, i) => ({
-                        url: l.link,
-                        quality: l.quality || (l.type === 'video' ? 'Video' : 'Audio'),
-                        format: l.extension || 'mp4',
-                        hasAudio: true,
-                        id: `rapid-${i}`
-                    }));
-
-                    if (mapped.length > 0) {
-                        return res.json({
-                            title: rResponse.data.title || 'YouTube Video',
-                            formats: mapped
-                        });
-                    }
-                }
-            } catch (e) {
-                console.warn(`[Fail] RapidAPI: ${e.message}`);
-                failureReasons.push(`RapidAPI: ${e.message}`);
+    // ==========================================
+    // METHOD 1: RapidAPI
+    // ==========================================
+    if (RAPIDAPI_KEY) {
+        try {
+            console.log(`[Attempt] RapidAPI...`);
+            const rResp = await axios.get('https://social-media-video-downloader.p.rapidapi.com/smvd/get/all', {
+                params: { url },
+                headers: {
+                    'x-rapidapi-key': RAPIDAPI_KEY,
+                    'x-rapidapi-host': 'social-media-video-downloader.p.rapidapi.com'
+                },
+                timeout: 7000
+            });
+            if (rResp.data && rResp.data.success && rResp.data.links) {
+                const formats = rResp.data.links.map((l, i) => ({
+                    url: l.link,
+                    quality: l.quality || 'Download',
+                    format: l.extension || 'mp4',
+                    hasAudio: true,
+                    id: `rapid-${i}`
+                }));
+                return res.json({ title: rResp.data.title || 'Video', formats });
             }
+        } catch (e) {
+            console.warn(`[Fail] RapidAPI: ${e.message}`);
+            failureReasons.push(`RapidAPI(${e.response?.status || 'ERR'}): ${e.message}`);
         }
+    }
 
-        // ==========================================
-        // METHOD 2: Cobalt API v10 (Official & Mirrors)
-        // ==========================================
-        const cobaltInstances = [
-            { url: 'https://api.cobalt.tools', endpoint: '/api/json', official: true },
-            { url: 'https://co.wuk.sh', endpoint: '/api/json' },
-            { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' }
-        ];
+    // ==========================================
+    // METHOD 2: Cobalt Mirrors (Multi-Schema)
+    // ==========================================
+    const cobaltInstances = [
+        { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' },
+        { url: 'https://cobalt.succoon.com', endpoint: '/api/json' },
+        { url: 'https://cobalt.steamys.com', endpoint: '/api/json' },
+        { url: 'https://cobalt.slpy.one', endpoint: '/api/json' },
+        { url: 'https://api.cobalt.tools', endpoint: '/api/json', official: true }
+    ];
 
-        for (const instance of cobaltInstances) {
-            try {
-                const apiUrl = `${instance.url}${instance.endpoint}`;
-                console.log(`[Attempt] Cobalt: ${apiUrl}`);
+    for (const inst of cobaltInstances) {
+        // Try v10 Schema
+        try {
+            const apiUrl = `${inst.url}${inst.endpoint}`;
+            console.log(`[Attempt] Cobalt v10: ${inst.url}`);
 
-                const headers = {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                };
-
-                if (instance.official) {
-                    headers['Origin'] = 'https://cobalt.tools';
-                    headers['Referer'] = 'https://cobalt.tools/';
-                    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-                }
-
-                // Cobalt v10 Request Body
-                const response = await axios.post(apiUrl, {
-                    url: url,
-                    videoQuality: '720',
-                    filenameStyle: 'basic',
-                    isAudioOnly: format === 'audio'
-                }, { headers, timeout: 5000 });
-
-                const data = response.data;
-
-                // Case: Direct Download
-                if (data.url) {
-                    return res.json({
-                        title: 'Ready',
-                        formats: [{ url: data.url, quality: '720p', format: 'mp4', hasAudio: true }]
-                    });
-                }
-
-                // Case: Picker (Items)
-                if (data.picker && Array.isArray(data.picker)) {
-                    const formats = data.picker.map((p, i) => ({
-                        url: p.url,
-                        quality: p.quality || (p.type === 'video' ? 'Video' : 'Audio'),
-                        format: 'mp4',
-                        hasAudio: true,
-                        id: `cobalt-${i}`
-                    }));
-                    if (formats.length > 0) {
-                        return res.json({ title: 'Ready', formats });
-                    }
-                }
-            } catch (err) {
-                const errMsg = err.response?.data?.text || err.message;
-                console.warn(`[Fail] Cobalt ${instance.url}: ${errMsg}`);
-                failureReasons.push(`${instance.url}: ${errMsg}`);
+            const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+            if (inst.official) {
+                headers['Origin'] = 'https://cobalt.tools';
+                headers['Referer'] = 'https://cobalt.tools/';
+                headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
             }
-        }
 
-        // ==========================================
-        // METHOD 3: Invidious Fallback
-        // ==========================================
-        const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
-        if (videoIdMatch) {
-            const videoId = videoIdMatch[1];
+            const response = await axios.post(apiUrl, {
+                url: url,
+                videoQuality: '720',
+                filenameStyle: 'basic',
+                isAudioOnly: format === 'audio'
+            }, { headers, timeout: 4000 });
+
+            if (response.data.url) {
+                return res.json({ title: 'Ready', formats: [{ url: response.data.url, quality: '720p', format: 'mp4', hasAudio: true }] });
+            }
+            if (response.data.picker) {
+                const formats = response.data.picker.map((p, i) => ({
+                    url: p.url, quality: p.quality || 'Video', format: 'mp4', hasAudio: true, id: `c-${i}`
+                }));
+                return res.json({ title: 'Ready', formats });
+            }
+        } catch (e) {
+            console.warn(`[Fail] Cobalt v10 ${inst.url}: ${e.message}`);
+
+            // Try Legacy Schema for 400 errors
+            if (e.response?.status === 400) {
+                try {
+                    console.log(`[Attempt] Cobalt Legacy: ${inst.url}`);
+                    const response = await axios.post(`${inst.url}${inst.endpoint}`, {
+                        url: url, vQuality: '720'
+                    }, { timeout: 4000 });
+                    if (response.data.url) {
+                        return res.json({ title: 'Ready', formats: [{ url: response.data.url, quality: '720p', format: 'mp4', hasAudio: true }] });
+                    }
+                } catch (e2) {
+                    console.warn(`[Fail] Cobalt Legacy ${inst.url}: ${e2.message}`);
+                }
+            }
+            failureReasons.push(`${inst.url}: ${e.message}`);
+        }
+    }
+
+    // ==========================================
+    // METHOD 3: Invidious Expanded List
+    // ==========================================
+    const invInstances = [
+        'https://invidious.fdn.fr',
+        'https://inv.tux.pizza',
+        'https://invidious.projectsegfau.lt',
+        'https://inv.nadeko.net'
+    ];
+    const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+    if (videoIdMatch) {
+        const videoId = videoIdMatch[1];
+        for (const inst of invInstances) {
             try {
-                console.log(`[Attempt] Invidious: Nadeko...`);
-                const invResp = await axios.get(`https://inv.nadeko.net/api/v1/videos/${videoId}`, { timeout: 4000 });
+                console.log(`[Attempt] Invidious: ${inst}`);
+                const invResp = await axios.get(`${inst}/api/v1/videos/${videoId}`, { timeout: 4000 });
                 const streams = [...(invResp.data.formatStreams || []), ...(invResp.data.adaptiveFormats || [])];
                 if (streams.length > 0) {
                     const formats = streams.slice(0, 5).map((s, i) => ({
                         url: s.url,
-                        quality: s.qualityLabel || 'Standard',
+                        quality: s.qualityLabel || s.quality || 'Standard',
                         format: s.container || 'mp4',
                         hasAudio: true,
                         id: `inv-${i}`
                     }));
-                    return res.json({ title: invResp.data.title, formats });
+                    return res.json({ title: invResp.data.title || 'YouTube Video', formats });
                 }
             } catch (e) {
-                console.warn(`[Fail] Invidious: ${e.message}`);
+                console.warn(`[Fail] Invidious ${inst}: ${e.message}`);
             }
         }
-
-        // ==========================================
-        // FINAL FAILURE
-        // ==========================================
-        return res.status(500).json({
-            error: 'No download options available for this video.',
-            hint: 'This video might be private, restricted, or all API credits are exhausted.',
-            debug: failureReasons.slice(0, 3)
-        });
-
-    } catch (err) {
-        console.error('[CRITICAL] Final Catch:', err.message);
-        res.status(500).json({ error: 'Server Error', details: err.message });
     }
+
+    // ==========================================
+    // FINAL FAILURE
+    // ==========================================
+    return res.status(500).json({
+        error: 'All download methods failed.',
+        details: failureReasons.slice(0, 3).join(' | '),
+        trace: failureReasons
+    });
 });
 
-// Other endpoints (minimal placeholders)
 app.post('/api/facebook/download', (req, res) => res.status(501).json({ error: 'Coming soon' }));
 app.post('/api/instagram/download', (req, res) => res.status(501).json({ error: 'Coming soon' }));
 app.post('/api/tiktok/download', (req, res) => res.status(501).json({ error: 'Coming soon' }));

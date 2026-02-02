@@ -140,43 +140,67 @@ youtubeFetch.addEventListener('click', async () => {
         }
 
         // 2. Client-Side Fallback (Direct browser-to-Cobalt)
-        // This works because the Browser's IP is not blocked by Cobalt instances.
-        console.log('Attempting Client-Side Fallback...');
-        const cobaltResp = await fetch('https://cobalt-api.kwiatekmiki.com/', {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: url,
-                videoQuality: '720',
-                filenameStyle: 'basic',
-                isAudioOnly: currentFormat === 'audio'
-            })
-        });
+        console.log('Attempting Client-Side Fallback Rescue Mission...');
+        const cobaltMirrors = [
+            { url: 'https://cobalt-api.kwiatekmiki.com/', type: 'v10' },
+            { url: 'https://cobalt.succoon.com/api/json', type: 'v10' }
+        ];
 
-        if (cobaltResp.ok) {
-            const cobaltData = await cobaltResp.json();
+        for (const mirror of cobaltMirrors) {
+            try {
+                console.log(`Trying Client Mirror: ${mirror.url}`);
+                const body = mirror.type === 'v10'
+                    ? { url, videoQuality: '720', filenameStyle: 'basic', isAudioOnly: currentFormat === 'audio' }
+                    : { url, vQuality: '720' };
 
-            // Normalize result
-            let formats = [];
-            if (cobaltData.url) {
-                formats = [{ url: cobaltData.url, quality: '720p', format: 'mp4', hasAudio: true }];
-            } else if (cobaltData.picker && Array.isArray(cobaltData.picker)) {
-                formats = cobaltData.picker.map((p, i) => ({
-                    url: p.url,
-                    quality: p.quality || (p.type === 'video' ? 'Video' : 'Audio'),
-                    format: 'mp4',
-                    hasAudio: true,
-                    id: `cl-${i}`
-                }));
-            }
+                const cobaltResp = await fetch(mirror.url, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
 
-            if (formats.length > 0) {
-                renderYouTubeResults(url, metadata, { title: metadata.title, formats });
-                return; // SUCCESS
+                if (cobaltResp.ok) {
+                    const cobaltData = await cobaltResp.json();
+                    let formats = [];
+                    if (cobaltData.url) {
+                        formats = [{ url: cobaltData.url, quality: '720p', format: 'mp4', hasAudio: true }];
+                    } else if (cobaltData.picker && Array.isArray(cobaltData.picker)) {
+                        formats = cobaltData.picker.map((p, i) => ({
+                            url: p.url,
+                            quality: p.quality || (p.type === 'video' ? 'Video' : 'Audio'),
+                            format: 'mp4',
+                            hasAudio: true,
+                            id: `cl-${i}`
+                        }));
+                    }
+
+                    if (formats.length > 0) {
+                        renderYouTubeResults(url, metadata, { title: metadata.title, formats });
+                        console.log('Client-Side Fallback SUCCESS!');
+                        return;
+                    }
+                } else if (cobaltResp.status === 400 && mirror.type === 'v10') {
+                    // Quick retry with legacy schema if v10 failed with 400
+                    console.log('Mirror returned 400, retrying with legacy schema...');
+                    const legacyResp = await fetch(mirror.url, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url, vQuality: '720' })
+                    });
+                    if (legacyResp.ok) {
+                        const cobaltData = await legacyResp.json();
+                        if (cobaltData.url) {
+                            renderYouTubeResults(url, metadata, { title: metadata.title, formats: [{ url: cobaltData.url, quality: '720p', format: 'mp4', hasAudio: true }] });
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn(`Mirror ${mirror.url} failed:`, err);
             }
         }
 
-        throw new Error('All download methods failed. Please try a different URL or wait a few minutes.');
+        throw new Error('All download methods failed. This video might be restricted or private.');
 
     } catch (error) {
         console.error('YouTube Fetch Error:', error);
