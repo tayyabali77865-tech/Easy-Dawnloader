@@ -65,7 +65,9 @@ app.post('/api/youtube/download', async (req, res) => {
         // ==========================================
         const cobaltInstances = [
             'https://api.cobalt.tools/api/json',
-            'https://cobalt-api.vgest.io/api/json'
+            'https://cobalt-api.vgest.io/api/json',
+            'https://api.v0.pw/api/json',
+            'https://co.wuk.sh/api/json'
         ];
 
         for (const endpoint of cobaltInstances) {
@@ -114,12 +116,53 @@ app.post('/api/youtube/download', async (req, res) => {
         }
 
         // ==========================================
-        // METHOD 2: Public Proxy Fallback (Invidious)
+        // METHOD 2: Public Proxy Fallback (Invidious API)
         // ==========================================
         try {
-            console.log('[YOUTUBE] Trying Public Proxy Fallback...');
-            // We can add a simple public conversion endpoint here if needed
-        } catch (e) { }
+            console.log('[YOUTUBE] Trying Invidious Fallback...');
+            const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+            if (videoIdMatch) {
+                const videoId = videoIdMatch[1];
+                const invidiousInstances = [
+                    'https://invidious.snopyta.org',
+                    'https://yewtu.be',
+                    'https://vid.puffyan.us',
+                    'https://inv.riverside.rocks'
+                ];
+
+                for (const instance of invidiousInstances) {
+                    try {
+                        console.log(`[YOUTUBE] Trying Invidious Instance: ${instance}`);
+                        const invResp = await axios.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 5000 });
+                        const invData = invResp.data;
+
+                        if (invData && (invData.formatStreams || invData.adaptiveFormats)) {
+                            const combined = [...(invData.formatStreams || []), ...(invData.adaptiveFormats || [])];
+                            const filtered = combined.filter(s => format === 'audio' ? s.type.includes('audio') : s.type.includes('video'));
+
+                            if (filtered.length > 0) {
+                                const selected = filtered.slice(0, 5).map((s, i) => ({
+                                    url: s.url,
+                                    quality: s.qualityLabel || s.audioQuality || 'Standard',
+                                    format: s.container || (s.type.includes('video') ? 'mp4' : 'm4a'),
+                                    hasAudio: s.type.includes('video') && s.qualityLabel !== undefined,
+                                    id: `inv-${i}`
+                                }));
+                                return res.json({
+                                    formats: selected,
+                                    title: invData.title || 'YouTube Video',
+                                    note: 'Retrieved via decentralized proxy.'
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`[YOUTUBE] Invidious ${instance} failed`);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[YOUTUBE] Invidious fallback error:', e.message);
+        }
 
         // ==========================================
         // METHOD 3: RapidAPI Fallback (Social Media Downloader)
