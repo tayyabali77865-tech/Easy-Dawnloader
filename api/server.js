@@ -66,33 +66,34 @@ app.post('/api/youtube/download', async (req, res) => {
         const failureReasons = []; // Track why each method failed
 
         // ==========================================
-        // METHOD 1: Cobalt API v10 (New Working Instances)
+        // METHOD 1: Cobalt API v10 (Updated Feb 2026)
         // ==========================================
         const cobaltInstances = [
-            'https://api.cobalt.tools/api/json',  // Official (might work with v10)
-            'https://cobalt-api.kwiatekmiki.com/api/json',  // Community instance
-            'https://co.wuk.sh/api/json'  // Alternative
+            'https://cobalt-api.kwiatekmiki.com',  // Working v10 instance
+            'https://api.cobalt.tools' // Official (requires different handling usually, but keeping as backup)
         ];
 
-        for (const endpoint of cobaltInstances) {
+        for (const base of cobaltInstances) {
             try {
-                console.log(`[YOUTUBE] Trying Cobalt Instance: ${endpoint}`);
-                const response = await axios.post(endpoint, {
+                console.log(`[YOUTUBE] Trying Cobalt Instance: ${base}`);
+                // Cobalt v10 uses POST / with different body
+                const response = await axios.post(`${base}/`, {
                     url: url,
-                    isAudioOnly: format === 'audio',
-                    vQuality: '720',
-                    audioFormat: 'mp3'
+                    videoQuality: '720',
+                    audioFormat: format === 'audio' ? 'mp3' : undefined,
+                    downloadMode: format === 'audio' ? 'audio' : 'auto',
                 }, {
                     headers: {
                         'Accept': 'application/json',
                         'Content-Type': 'application/json',
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
                     },
-                    timeout: 7000
+                    timeout: 10000
                 });
 
                 const data = response.data;
-                if (data.status === 'stream' || data.status === 'redirect') {
+                // v10 statuses: tunnel, stream, redirect, picker
+                if (['tunnel', 'stream', 'redirect'].includes(data.status)) {
                     return res.json({
                         formats: [{
                             url: data.url,
@@ -101,8 +102,8 @@ app.post('/api/youtube/download', async (req, res) => {
                             hasAudio: true,
                             id: 'cobalt-success'
                         }],
-                        title: 'YouTube Video',
-                        note: 'Download link retrieved successfully.'
+                        title: data.filename || 'YouTube Video',
+                        note: 'Download link retrieved successfully (Cobalt v10).'
                     });
                 } else if (data.status === 'picker') {
                     const pickerFormats = data.picker.map((p, i) => ({
@@ -115,10 +116,13 @@ app.post('/api/youtube/download', async (req, res) => {
                     return res.json({ formats: pickerFormats, title: 'YouTube Video', note: 'Quality options generated.' });
                 }
             } catch (err) {
-                const reason = `Cobalt ${endpoint}: ${err.response?.status || err.message}`;
+                const reason = `Cobalt ${base}: ${err.response?.status || err.message}`;
+                // Special handling for 400/401 which usually means bot protection or bad request
+                if (err.response?.status === 400 || err.response?.status === 401) {
+                    if (err.response?.data) console.warn(`[YOUTUBE] Cobalt Error Body:`, JSON.stringify(err.response.data).substring(0, 200));
+                }
                 failureReasons.push(reason);
                 console.warn(`[YOUTUBE] ${reason}`);
-                if (err.response?.data) console.warn(`[YOUTUBE] Cobalt Error Body:`, JSON.stringify(err.response.data).substring(0, 200));
             }
         }
 
@@ -166,64 +170,12 @@ app.post('/api/youtube/download', async (req, res) => {
                             }
                         }
                     } catch (e) {
-                        const reason = `Invidious ${instance}: ${e.response?.status || e.message}`;
-                        failureReasons.push(reason);
-                        console.warn(`[YOUTUBE] ${reason}`);
+                        // Simplify logging
                     }
                 }
             }
         } catch (e) {
             console.error('[YOUTUBE] Invidious fallback critical error:', e.message);
-        }
-
-        // ==========================================
-        // METHOD 3: Free Public API - YT5s (NO KEY NEEDED)
-        // ==========================================
-        try {
-            console.log('[YOUTUBE] Trying YT5s Free API...');
-            const videoId = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1];
-            if (videoId) {
-                const yt5sResp = await axios.post('https://yt5s.io/api/ajaxSearch',
-                    new URLSearchParams({
-                        q: `https://www.youtube.com/watch?v=${videoId}`,
-                        vt: 'home'
-                    }),
-                    {
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Accept': 'application/json'
-                        },
-                        timeout: 8000
-                    }
-                );
-
-                if (yt5sResp.data && yt5sResp.data.status === 'ok') {
-                    console.log('[YOUTUBE SUCCESS] YT5s API worked!');
-                    // Extract download links from response
-                    const links = yt5sResp.data.links || {};
-                    const mp4Links = links.mp4 || {};
-                    const formats = Object.keys(mp4Links).map((quality, i) => ({
-                        url: `https://yt5s.io/api/ajaxConvert?id=${videoId}&quality=${quality}`,
-                        quality: `Download ${quality}`,
-                        format: 'mp4',
-                        hasAudio: true,
-                        id: `yt5s-${i}`
-                    }));
-
-                    if (formats.length > 0) {
-                        return res.json({
-                            formats: formats,
-                            title: yt5sResp.data.title || 'YouTube Video',
-                            note: 'Free download via YT5s (no registration needed)'
-                        });
-                    }
-                }
-            }
-        } catch (e) {
-            const reason = `YT5s: ${e.message}`;
-            failureReasons.push(reason);
-            console.warn(`[YOUTUBE] ${reason}`);
         }
 
         // ==========================================
