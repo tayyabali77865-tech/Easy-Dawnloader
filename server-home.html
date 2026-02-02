@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 Server is Running!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+
+        .status {
+            font-size: 1.5em;
+            margin: 20px 0;
+        }
+
+        .link {
+            background: white;
+            color: #667eea;
+            padding: 15px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            display: inline-block;
+            margin: 20px 0;
+            font-weight: bold;
+            font-size: 1.2em;
+            transition: transform 0.2s;
+        }
+
+        .link:hover {
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            margin-top: 30px;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .instructions li {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>✅ Server is Running!</h1>
+        <div class="status">Your EasyDownloader backend is active and ready to use.</div>
+
+        <a href="./index.html" class="link">🎬 Open Downloader</a>
+
+        <div class="instructions">
+            <h3>📋 How to Use:</h3>
+            <ol>
+                <li>Click the button above to open the downloader</li>
+                <li>Paste any YouTube URL</li>
+                <li>Click "Fetch Video"</li>
+                <li>Download your video!</li>
+            </ol>
+            <p style="margin-top: 20px; font-size: 0.9em; opacity: 0.8;">
+                💡 Tip: Always access via <strong>http://localhost:3000</strong> - don't open HTML files directly!
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>
