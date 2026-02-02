@@ -115,7 +115,8 @@ app.post('/api/youtube/download', async (req, res) => {
                     return res.json({ formats: pickerFormats, title: 'YouTube Video', note: 'Quality options generated.' });
                 }
             } catch (err) {
-                console.warn(`[YOUTUBE] Cobalt ${endpoint} failed: ${err.message}`);
+                console.warn(`[YOUTUBE] Cobalt ${endpoint} failed: ${err.response?.status || err.message}`);
+                if (err.response?.data) console.warn(`[YOUTUBE] Cobalt Error Body:`, JSON.stringify(err.response.data).substring(0, 200));
             }
         }
 
@@ -160,12 +161,12 @@ app.post('/api/youtube/download', async (req, res) => {
                             }
                         }
                     } catch (e) {
-                        console.warn(`[YOUTUBE] Invidious ${instance} failed`);
+                        console.warn(`[YOUTUBE] Invidious ${instance} failed: ${e.response?.status || e.message}`);
                     }
                 }
             }
         } catch (e) {
-            console.error('[YOUTUBE] Invidious fallback error:', e.message);
+            console.error('[YOUTUBE] Invidious fallback critical error:', e.message);
         }
 
         // ==========================================
@@ -194,11 +195,49 @@ app.post('/api/youtube/download', async (req, res) => {
                             id: `rapid-${i}`
                         }));
                     if (mapped.length > 0) {
+                        console.log(`[YOUTUBE SUCCESS] RapidAPI linked successfully.`);
                         return res.json({ formats: mapped, title: rResponse.data.title || 'YouTube Video' });
                     }
                 }
             }
-        } catch (e) { }
+            console.warn(`[YOUTUBE] RapidAPI succeeded but returned no links or success: false`);
+        } catch (e) {
+            console.error(`[YOUTUBE] RapidAPI Method 3 failed: ${e.response?.status || e.message}`);
+            if (e.response?.status === 401 || e.response?.status === 403) {
+                console.error(`[YOUTUBE] CRITICAL: RapidAPI Key migh be invalid or unsubscribed.`);
+            }
+        }
+
+        // ==========================================
+        // METHOD 5: Alternative RapidAPI (YT API)
+        // ==========================================
+        try {
+            console.log(`[YOUTUBE] Trying Method 5 (YT API)...`);
+            const ytResponse = await axios.get('https://yt-api.p.rapidapi.com/dl', {
+                params: { id: url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1] },
+                headers: {
+                    'x-rapidapi-key': YOUTUBE_API_KEY,
+                    'x-rapidapi-host': 'yt-api.p.rapidapi.com'
+                },
+                timeout: 8000
+            });
+
+            if (ytResponse.data && ytResponse.data.status === 'OK') {
+                const formats = (ytResponse.data.formats || []).map((f, i) => ({
+                    url: f.url,
+                    quality: f.qualityLabel || 'Download',
+                    format: 'mp4',
+                    hasAudio: true,
+                    id: `ytapi-${i}`
+                }));
+                if (formats.length > 0) {
+                    console.log(`[YOUTUBE SUCCESS] Method 5 Succeeded.`);
+                    return res.json({ formats: formats, title: ytResponse.data.title || 'YouTube Video' });
+                }
+            }
+        } catch (e) {
+            console.warn(`[YOUTUBE] Method 5 failed: ${e.response?.status || e.message}`);
+        }
 
         // ==========================================
         // METHOD 4: Internal Library (Last Resort)
