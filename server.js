@@ -738,3 +738,5 @@ double-click "run_me.bat" again.
         console.error('Server error:', err);
     }
 });
+
+module.exports = app;
