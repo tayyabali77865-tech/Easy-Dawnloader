@@ -27,7 +27,7 @@ const httpsAgent = new https.Agent({
 // ========================================
 // YOUTUBE API ENDPOINTS (Vercel Compatible)
 // ========================================
-const ytdl = require('@distube/ytdl-core');
+// NOTE: ytdl-core removed - doesn't work on Vercel's read-only filesystem
 
 /**
  * YouTube: Fetch Video Metadata via YouTube oEmbed (More reliable on Vercel)
@@ -290,45 +290,21 @@ app.post('/api/youtube/download', async (req, res) => {
         }
 
         // ==========================================
-        // METHOD 6: Internal Library (Last Resort)
+        // FINAL: All Methods Failed
         // ==========================================
-        console.log('[YOUTUBE] Final attempt with internal library...');
-        try {
-            const info = await ytdl.getInfo(url, {
-                requestOptions: {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
-                    }
-                }
-            });
-            const videoFormats = info.formats.filter(f => f.hasVideo && f.hasAudio);
-            if (videoFormats.length > 0) {
-                return res.json({
-                    formats: videoFormats.map(f => ({
-                        url: f.url,
-                        quality: f.qualityLabel || 'Download',
-                        format: 'mp4',
-                        hasAudio: true,
-                        id: f.itag
-                    })),
-                    title: info.videoDetails.title
-                });
-            }
-            throw new Error('No compatible formats found');
-        } catch (err) {
-            console.error('[YOUTUBE LIBRARY ERROR]:', err.message);
-            return res.json({
-                error: 'All download methods failed (including free public APIs).',
-                details: `Error: ${err.message}`,
-                hint: 'This video might be age-restricted or private. For better reliability, check SETUP.md to add your own RapidAPI key (free tier available).'
-            });
-        }
+        console.error('[YOUTUBE] All download methods exhausted');
+        return res.json({
+            error: 'Unable to download this video using free methods.',
+            details: 'All free APIs (Cobalt, Invidious, Y2Mate) failed to retrieve download links.',
+            hint: 'This video might be age-restricted, private, or region-locked. For better reliability, add your own RapidAPI key (free tier available) - check SETUP.md for instructions.'
+        });
 
     } catch (globalErr) {
         console.error('[GLOBAL YOUTUBE ERROR]:', globalErr.message);
-        res.status(500).json({ error: 'Internal Server Error during YouTube processing' });
+        res.status(500).json({ error: 'Internal Server Error during YouTube processing', details: globalErr.message });
     }
 });
+
 
 
 
