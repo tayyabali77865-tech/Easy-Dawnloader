@@ -118,50 +118,11 @@ youtubeFetch.addEventListener('click', async () => {
     youtubeFetch.disabled = true;
 
     try {
-        // STRATEGY 1: Client-Side Cobalt API (Preferred)
-        // This generates the link on the User's IP, preventing "403 Forbidden" or "Corrupt File"
-        // caused by IP mismatch (Server IP vs User IP).
-        console.log('Attempting Client-Side Cobalt Request...');
-        try {
-            const cobaltResp = await fetch('https://cobalt-api.kwiatekmiki.com/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    url: url,
-                    videoQuality: '720',
-                    audioFormat: currentFormat === 'audio' ? 'mp3' : undefined,
-                    downloadMode: currentFormat === 'audio' ? 'audio' : 'auto'
-                })
-            });
-
-            if (cobaltResp.ok) {
-                const data = await cobaltResp.json();
-                if (data.url) {
-                    console.log('Client-Side Success');
-                    renderYouTubeResults(url, {
-                        thumbnail_url: 'https://i.ytimg.com/vi/' + (url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/) || [])[1] + '/hqdefault.jpg',
-                        title: 'Video Found',
-                        author_name: 'YouTube User'
-                    }, {
-                        formats: [{ url: data.url, quality: '720p', format: currentFormat === 'audio' ? 'mp3' : 'mp4' }],
-                        title: 'Download Ready'
-                    });
-                    return; // Done!
-                }
-            }
-        } catch (clientErr) {
-            console.warn('Client-Side Cobalt failed (CORS?), falling back to server...', clientErr);
-        }
-
-        // STRATEGY 2: Server-Side Fallback
-        // If client-side fails (e.g. CORS), ask Vercel to get the link.
-        // NOTE: This might cause IP lock issues for some videos, but it's a necessary backup.
+        // Fetch metadata
         const infoResp = await fetch(`${API_BASE}/youtube/info?url=${encodeURIComponent(url)}`);
         const metadata = infoResp.ok ? await infoResp.json() : { thumbnail_url: '', title: 'Video', author_name: 'Unknown' };
 
+        // Fetch download link via Server (which handles API rotation and headers)
         const downloadResp = await fetch(`${API_BASE}/youtube/download`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -173,6 +134,8 @@ youtubeFetch.addEventListener('click', async () => {
             throw new Error(errData.error || 'Failed to fetch download link');
         }
         const downloadData = await downloadResp.json();
+
+        // Render results
         renderYouTubeResults(url, metadata, downloadData);
 
     } catch (error) {

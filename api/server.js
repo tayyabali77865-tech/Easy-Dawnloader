@@ -69,45 +69,44 @@ app.post('/api/youtube/download', async (req, res) => {
         // METHOD 1: Cobalt API v10 (Updated Feb 2026)
         // ==========================================
         const cobaltInstances = [
-            'https://cobalt-api.kwiatekmiki.com',  // Primary
-            'https://api.cobalt.tools', // Official
-            'https://cobalt.oup.us',
-            'https://cobalt.slpy.one'
+            { url: 'https://api.cobalt.tools', endpoint: '/api/json' }, // Official (Best Quality)
+            { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' }, // Backup (Works but no Content-Type)
+            { url: 'https://cobalt.oup.us', endpoint: '/' },
+            { url: 'https://cobalt.slpy.one', endpoint: '/' }
         ];
 
-        for (const base of cobaltInstances) {
+        for (const instance of cobaltInstances) {
             try {
-                console.log(`[YOUTUBE] Trying Cobalt Instance: ${base}`);
-                // Cobalt v10 uses POST / with different body
-                const response = await axios.post(`${base}/`, {
+                console.log(`[Attempt] Trying Cobalt Instance: ${instance.url}`);
+
+                const response = await axios.post(`${instance.url}${instance.endpoint}`, {
                     url: url,
-                    videoQuality: '720',
-                    audioFormat: format === 'audio' ? 'mp3' : undefined,
-                    downloadMode: format === 'audio' ? 'audio' : 'auto',
+                    vQuality: '720',
+                    filenamePattern: 'basic', // Force simple filename
+                    disableMetadata: true     // Reduce header complexity
                 }, {
                     headers: {
                         'Accept': 'application/json',
                         'Content-Type': 'application/json',
+                        'Origin': 'https://cobalt.tools', // Spoof Origin for Official API
+                        'Referer': 'https://cobalt.tools/', // Spoof Referer
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
                     },
-                    timeout: 10000
+                    timeout: 8000
                 });
 
-                const data = response.data;
-                // v10 statuses: tunnel, stream, redirect, picker
-                if (['tunnel', 'stream', 'redirect'].includes(data.status)) {
-                    return res.json({
+                if (response.data && response.data.url) {
+                    // Success!
+                    res.json({
+                        title: 'Ready to Download',
+                        url: null, // Legacy field
                         formats: [{
-                            url: data.url,
-                            quality: format === 'audio' ? 'Download MP3' : 'Download Video (Best)',
-                            format: format === 'audio' ? 'mp3' : 'mp4',
-                            hasAudio: true,
-                            id: 'cobalt-success'
-                        }],
-                        title: data.filename || 'YouTube Video',
-                        note: 'Download link retrieved successfully (Cobalt v10).'
+                            url: response.data.url, // The Direct Link (Tunnel)
+                            quality: '720p',
+                            format: 'mp4',
+                            hasAudio: true
+                        }]
                     });
-                } else if (data.status === 'picker') {
                     const pickerFormats = data.picker.map((p, i) => ({
                         url: p.url,
                         quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
