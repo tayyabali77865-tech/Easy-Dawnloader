@@ -68,63 +68,78 @@ app.post('/api/youtube/download', async (req, res) => {
         // ==========================================
         // METHOD 1: Cobalt API v10 (Updated Feb 2026)
         // ==========================================
+        // METHOD 1: Cobalt API v10 (Updated Feb 2026)
+        // ==========================================
         const cobaltInstances = [
-            { url: 'https://api.cobalt.tools', endpoint: '/api/json' }, // Official (Best Quality)
-            { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' }, // Backup (Works but no Content-Type)
-            { url: 'https://cobalt.oup.us', endpoint: '/' },
-            { url: 'https://cobalt.slpy.one', endpoint: '/' }
+            { url: 'https://api.cobalt.tools', endpoint: '/api/json', official: true },
+            { url: 'https://co.wuk.sh', endpoint: '/api/json' },
+            { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' },
+            { url: 'https://cobalt.succoon.com', endpoint: '/api/json' },
+            { url: 'https://cobalt.steamys.com', endpoint: '/api/json' }
         ];
 
-        for (const instance of cobaltInstances) {
-            try {
-                console.log(`[Attempt] Trying Cobalt Instance: ${instance.url}`);
+        // Helper to try request (Direct or via Proxy)
+        const tryRequest = async (instance, useProxy = false) => {
+            const baseUrl = useProxy
+                ? `https://corsproxy.io/?url=${encodeURIComponent(instance.url + instance.endpoint)}`
+                : `${instance.url}${instance.endpoint}`;
 
-                const response = await axios.post(`${instance.url}${instance.endpoint}`, {
-                    url: url,
-                    vQuality: '720',
-                    filenamePattern: 'basic', // Force simple filename
-                    disableMetadata: true     // Reduce header complexity
-                }, {
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'Origin': 'https://cobalt.tools', // Spoof Origin for Official API
-                        'Referer': 'https://cobalt.tools/', // Spoof Referer
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-                    },
-                    timeout: 8000
-                });
+            const headers = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            };
 
-                if (response.data && response.data.url) {
-                    // Success!
-                    res.json({
-                        title: 'Ready to Download',
-                        url: null, // Legacy field
-                        formats: [{
-                            url: response.data.url, // The Direct Link (Tunnel)
-                            quality: '720p',
-                            format: 'mp4',
-                            hasAudio: true
-                        }]
-                    });
-                    const pickerFormats = data.picker.map((p, i) => ({
-                        url: p.url,
-                        quality: p.type === 'video' ? `Download ${p.quality || 'Video'}` : `Download Audio (${p.quality || 'MP3'})`,
-                        format: p.extension || (p.type === 'video' ? 'mp4' : 'mp3'),
-                        hasAudio: true,
-                        id: `cobalt-p-${i}`
-                    }));
-                    return res.json({ formats: pickerFormats, title: 'YouTube Video', note: 'Quality options generated.' });
-                }
-            } catch (err) {
-                const reason = `Cobalt ${base}: ${err.response?.status || err.message}`;
-                // Special handling for 400/401 which usually means bot protection or bad request
-                if (err.response?.status === 400 || err.response?.status === 401) {
-                    if (err.response?.data) console.warn(`[YOUTUBE] Cobalt Error Body:`, JSON.stringify(err.response.data).substring(0, 200));
-                }
-                failureReasons.push(reason);
-                console.warn(`[YOUTUBE] ${reason}`);
+            // Official instance needs specific headers (direct only)
+            if (instance.official && !useProxy) {
+                headers['Origin'] = 'https://cobalt.tools';
+                headers['Referer'] = 'https://cobalt.tools/';
+                headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
             }
+
+            return axios.post(baseUrl, {
+                url: url,
+                vQuality: '720',
+                filenamePattern: 'basic',
+                disableMetadata: true
+            }, {
+                headers: headers,
+                timeout: 5000 // Short timeout to try next quickly
+            });
+        };
+
+        for (const instance of cobaltInstances) {
+            // First try Direct
+            try {
+                console.log(`[Attempt] Direct: ${instance.url}`);
+                const response = await tryRequest(instance, false);
+                if (response.data && response.data.url) return sendSuccess(res, response.data.url);
+            } catch (err) {
+                console.warn(`[Fail] Direct ${instance.url}: ${err.message}`);
+
+                // If Direct fails, Try Proxy (bypass IP block)
+                try {
+                    console.log(`[Attempt] Proxy: ${instance.url}`);
+                    const response = await tryRequest(instance, true);
+                    if (response.data && response.data.url) return sendSuccess(res, response.data.url);
+                } catch (proxyErr) {
+                    console.warn(`[Fail] Proxy ${instance.url}: ${proxyErr.message}`);
+                    failureReasons.push(`${instance.url}: ${err.message} / Proxy: ${proxyErr.message}`);
+                }
+            }
+        }
+
+        // Helper to send success response
+        function sendSuccess(res, directUrl) {
+            res.json({
+                title: 'Ready to Download',
+                url: null,
+                formats: [{
+                    url: directUrl,
+                    quality: '720p',
+                    format: 'mp4',
+                    hasAudio: true
+                }]
+            });
         }
 
         // ==========================================
