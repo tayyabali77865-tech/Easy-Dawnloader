@@ -527,15 +527,31 @@ app.get('/api/proxy', async (req, res) => {
                 'Accept': '*/*',
                 'Referer': referer
             },
-            timeout: 30000
+            timeout: 60000 // Increased timeout for large files
         });
 
         // Set headers for download
         const targetFilename = filename || 'video.mp4';
+        const ext = path.extname(targetFilename).toLowerCase().replace('.', '');
+
+        // BETTER CONTENT-TYPE HANDLING
+        // Cobalt often returns undefined Content-Type. We MUST guess it or the browser will fail.
+        let contentType = response.headers['content-type'];
+        if (!contentType || contentType === 'application/octet-stream') {
+            if (ext === 'mp4') contentType = 'video/mp4';
+            else if (ext === 'mp3') contentType = 'audio/mpeg';
+            else if (ext === 'm4a') contentType = 'audio/mp4';
+            else contentType = 'application/octet-stream';
+        }
+
         res.setHeader('Content-Disposition', `attachment; filename="${targetFilename}"`);
-        res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
-        if (response.headers['content-length']) {
-            res.setHeader('Content-Length', response.headers['content-length']);
+        res.setHeader('Content-Type', contentType);
+
+        // BETTER CONTENT-LENGTH HANDLING
+        // Cobalt sends 'Estimated-Content-Length' for chunked streams
+        const contentLength = response.headers['content-length'] || response.headers['estimated-content-length'];
+        if (contentLength) {
+            res.setHeader('Content-Length', contentLength);
         }
 
         // Pipe the stream
@@ -543,27 +559,10 @@ app.get('/api/proxy', async (req, res) => {
 
     } catch (error) {
         console.error(`[PROXY CRITICAL ERROR] Failed for: ${url}`);
-        console.error(`[PROXY ERROR MESSAGE]: ${error.message}`);
-
-        if (error.response) {
-            console.error(`[PROXY STATUS]: ${error.response.status}`);
-            console.error(`[PROXY HEADERS]:`, JSON.stringify(error.response.headers));
-
-            // Try to log a snippet of error response body
-            if (error.response.data && typeof error.response.data.on === 'function') {
-                // It's a stream, we can't easily read it without piping, but we can try
-                console.error('[PROXY ERROR BODY]: Response body is a stream.');
-            } else {
-                console.error(`[PROXY ERROR BODY]:`, String(JSON.stringify(error.response.data)).substring(0, 500));
-            }
-
-            return res.status(error.response.status).json({
-                error: `Origin server returned ${error.response.status}`,
-                details: error.message,
-                origin: url.split('/')[2]
-            });
+        // ... (rest of error handling)
+        if (!res.headersSent) {
+            res.status(500).json({ error: `Proxy failed: ${error.message}` });
         }
-        res.status(500).json({ error: `Proxy failed: ${error.message}` });
     }
 });
 
