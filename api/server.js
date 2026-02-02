@@ -205,3 +205,5 @@ app.post('/api/instagram/download', (req, res) => res.status(501).json({ error: 
 app.post('/api/tiktok/download', (req, res) => res.status(501).json({ error: 'Coming soon' }));
 
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+
+module.exports = app;
