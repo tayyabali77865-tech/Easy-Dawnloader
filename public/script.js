@@ -118,15 +118,50 @@ youtubeFetch.addEventListener('click', async () => {
     youtubeFetch.disabled = true;
 
     try {
-        // Fetch metadata
-        const infoResp = await fetch(`${API_BASE}/youtube/info?url=${encodeURIComponent(url)}`);
-        if (!infoResp.ok) {
-            const errData = await infoResp.json().catch(() => ({}));
-            throw new Error(errData.error || 'Failed to fetch video information');
-        }
-        const metadata = await infoResp.json();
+        // STRATEGY 1: Client-Side Cobalt API (Preferred)
+        // This generates the link on the User's IP, preventing "403 Forbidden" or "Corrupt File"
+        // caused by IP mismatch (Server IP vs User IP).
+        console.log('Attempting Client-Side Cobalt Request...');
+        try {
+            const cobaltResp = await fetch('https://cobalt-api.kwiatekmiki.com/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    videoQuality: '720',
+                    audioFormat: currentFormat === 'audio' ? 'mp3' : undefined,
+                    downloadMode: currentFormat === 'audio' ? 'audio' : 'auto'
+                })
+            });
 
-        // Fetch download link
+            if (cobaltResp.ok) {
+                const data = await cobaltResp.json();
+                if (data.url) {
+                    console.log('Client-Side Success');
+                    renderYouTubeResults(url, {
+                        thumbnail_url: 'https://i.ytimg.com/vi/' + (url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/) || [])[1] + '/hqdefault.jpg',
+                        title: 'Video Found',
+                        author_name: 'YouTube User'
+                    }, {
+                        formats: [{ url: data.url, quality: '720p', format: currentFormat === 'audio' ? 'mp3' : 'mp4' }],
+                        title: 'Download Ready'
+                    });
+                    return; // Done!
+                }
+            }
+        } catch (clientErr) {
+            console.warn('Client-Side Cobalt failed (CORS?), falling back to server...', clientErr);
+        }
+
+        // STRATEGY 2: Server-Side Fallback
+        // If client-side fails (e.g. CORS), ask Vercel to get the link.
+        // NOTE: This might cause IP lock issues for some videos, but it's a necessary backup.
+        const infoResp = await fetch(`${API_BASE}/youtube/info?url=${encodeURIComponent(url)}`);
+        const metadata = infoResp.ok ? await infoResp.json() : { thumbnail_url: '', title: 'Video', author_name: 'Unknown' };
+
         const downloadResp = await fetch(`${API_BASE}/youtube/download`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -139,23 +174,10 @@ youtubeFetch.addEventListener('click', async () => {
         }
         const downloadData = await downloadResp.json();
         renderYouTubeResults(url, metadata, downloadData);
+
     } catch (error) {
         console.error('YouTube Fetch Error:', error);
-
-        let errorMessage = error.message;
-
-        // Check if server returned detailed debug info
-        if (error.message.includes('debugInfo') || error.message.includes('Failures:')) {
-            errorMessage = `<strong>Download Failed</strong><br><br>` +
-                `${error.message}<br><br>` +
-                `<small>Check the error details above to see which APIs failed and why.</small>`;
-        } else if (errorMessage.includes('All 5 fallback layers failed')) {
-            errorMessage = `<strong>YouTube Blocked (5-Layer Fallback Failed)</strong><br><br>` +
-                `Please check if your <strong>YOUTUBE_API_KEY</strong> is set in Vercel. <br>` +
-                `<small>Try adding a fresh RAPIDAPI_KEY to your Vercel Dashboard and Re-deploying.</small>`;
-        }
-
-        showError('youtube', errorMessage);
+        showError('youtube', error.message || 'Failed to process request');
     } finally {
         youtubeLoader.style.display = 'none';
         youtubeFetch.disabled = false;
@@ -182,23 +204,20 @@ const renderYouTubeResults = (videoUrl, metadata, downloadData) => {
         }
 
         downloadData.formats.forEach(format => {
-            const hasAudio = format.hasAudio !== false; // Default to true if undefined
+            const hasAudio = format.hasAudio !== false;
 
-            // Universal Proxy Strategy:
-            // Always use the backend proxy for ALL downloads.
-            // valid Content-Type headers are critical for browser playback/download.
-            // If the upstream provider (Cobalt) sends no Content-Type, the browser might save it as text/html or generic file.
-            // Our proxy will force the correct headers.
-
-            // NOTE: We pass format.url (the direct video link).
-            // We use the proxy endpoint which streams data and sets Content-Type.
-            const finalUrl = `${API_BASE}/proxy?url=${encodeURIComponent(format.url)}&filename=${encodeURIComponent(downloadData.title || 'video')}.${format.format}`;
+            // DIRECT DOWNLOAD STRATEGY:
+            // Use the raw direct link from Cobalt.
+            // Do NOT proxy via Vercel (avoids limits).
+            // Do NOT use Client-Side Fetch (avoids CORS issues on download).
+            // Use standard <a href> which is most robust.
 
             const downloadItem = createDownloadButton(
-                finalUrl,
+                format.url,
                 format.quality,
                 format.format.toUpperCase(),
-                hasAudio
+                hasAudio,
+                downloadData.title || 'video'
             );
             youtubeDownloads.appendChild(downloadItem);
         });
