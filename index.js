@@ -7,7 +7,7 @@ const path = require('path');
 const https = require('https');
 
 // Initialize environment variables
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -84,10 +84,9 @@ app.post('/api/youtube/download', async (req, res) => {
     // ==========================================
     const cobaltInstances = [
         { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' },
-        { url: 'https://cobalt.succoon.com', endpoint: '/api/json' },
-        { url: 'https://cobalt.steamys.com', endpoint: '/api/json' },
-        { url: 'https://cobalt.slpy.one', endpoint: '/api/json' },
-        { url: 'https://api.cobalt.tools', endpoint: '/api/json', official: true }
+        { url: 'https://api.cobalt.tools', endpoint: '/api/json', official: true },
+        { url: 'https://cobalt.cup.lol', endpoint: '/api/json' },
+        { url: 'https://cobalt.nyx.re', endpoint: '/api/json' }
     ];
 
     for (const inst of cobaltInstances) {
@@ -144,10 +143,11 @@ app.post('/api/youtube/download', async (req, res) => {
     // METHOD 3: Invidious Expanded List
     // ==========================================
     const invInstances = [
-        'https://invidious.fdn.fr',
-        'https://inv.tux.pizza',
         'https://invidious.projectsegfau.lt',
-        'https://inv.nadeko.net'
+        'https://invidious.snopyta.org',
+        'https://inv.riverside.rocks',
+        'https://iv.ggtyler.dev',
+        'https://invidious.fdn.fr'
     ];
     const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
     if (videoIdMatch) {
@@ -169,6 +169,7 @@ app.post('/api/youtube/download', async (req, res) => {
                 }
             } catch (e) {
                 console.warn(`[Fail] Invidious ${inst}: ${e.message}`);
+                failureReasons.push(`Invidious(${inst}): ${e.message}`);
             }
         }
     }
