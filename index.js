@@ -188,6 +188,14 @@ app.post('/api/facebook/download', (req, res) => res.status(501).json({ error: '
 app.post('/api/instagram/download', (req, res) => res.status(501).json({ error: 'Coming soon' }));
 app.post('/api/tiktok/download', (req, res) => res.status(501).json({ error: 'Coming soon' }));
 
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Fallback to index.html for any other route (SPA behavior)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
 
 module.exports = app;
