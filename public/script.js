@@ -142,8 +142,9 @@ youtubeFetch.addEventListener('click', async () => {
         // 2. Client-Side Fallback (Direct browser-to-Cobalt)
         console.log('Attempting Client-Side Fallback Rescue Mission...');
         const cobaltMirrors = [
-            { url: 'https://cobalt-api.kwiatekmiki.com/', type: 'v10' },
-            { url: 'https://cobalt.succoon.com/api/json', type: 'v10' }
+            { url: 'https://cobalt.meowing.de/api/json', type: 'v10' },
+            { url: 'https://qwkuns.me/api/json', type: 'v10' },
+            { url: 'https://cobalt.canine.tools/api/json', type: 'v10' }
         ];
 
         for (const mirror of cobaltMirrors) {
@@ -204,7 +205,21 @@ youtubeFetch.addEventListener('click', async () => {
 
     } catch (error) {
         console.error('YouTube Fetch Error:', error);
-        showError('youtube', error.message || 'Failed to process request');
+
+        // Check for suggested manual URL from backend
+        let message = error.message || 'Failed to process request';
+        const errorHtml = `
+            <div style="text-align:center;">
+                <p>${message}</p>
+                <a href="https://cobalt.tools/?url=${encodeURIComponent(url)}" target="_blank" style="display:inline-block; margin-top:10px; padding:10px 20px; background:var(--primary); color:white; border-radius:8px; text-decoration:none; font-weight:600;">
+                    Try Manual Download
+                </a>
+            </div>
+        `;
+
+        const errorTextElement = document.getElementById(`youtube-error-text`);
+        errorTextElement.innerHTML = errorHtml;
+        document.getElementById(`youtube-error`).style.display = 'flex';
     } finally {
         youtubeLoader.style.display = 'none';
         youtubeFetch.disabled = false;

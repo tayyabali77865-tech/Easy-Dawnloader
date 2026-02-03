@@ -83,7 +83,11 @@ app.post('/api/youtube/download', async (req, res) => {
     // METHOD 2: Cobalt Mirrors (Multi-Schema)
     // ==========================================
     const cobaltInstances = [
-        { url: 'https://cobalt-api.kwiatekmiki.com', endpoint: '/' },
+        { url: 'https://cobalt.meowing.de', endpoint: '/api/json' },
+        { url: 'https://qwkuns.me', endpoint: '/api/json' },
+        { url: 'https://cobalt.canine.tools', endpoint: '/api/json' },
+        { url: 'https://cobalt.clxxped.lol', endpoint: '/api/json' },
+        { url: 'https://dl.woof.monster', endpoint: '/api/json' },
         { url: 'https://api.cobalt.tools', endpoint: '/api/json', official: true },
         { url: 'https://cobalt.cup.lol', endpoint: '/api/json' },
         { url: 'https://cobalt.nyx.re', endpoint: '/api/json' }
@@ -143,11 +147,13 @@ app.post('/api/youtube/download', async (req, res) => {
     // METHOD 3: Invidious Expanded List
     // ==========================================
     const invInstances = [
+        'https://invidious.nerdvpn.de',
+        'https://yt.artemislena.eu',
+        'https://invidious.flokinet.to',
         'https://invidious.projectsegfau.lt',
         'https://invidious.snopyta.org',
         'https://inv.riverside.rocks',
-        'https://iv.ggtyler.dev',
-        'https://invidious.fdn.fr'
+        'https://iv.ggtyler.dev'
     ];
     const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
     if (videoIdMatch) {
@@ -178,9 +184,10 @@ app.post('/api/youtube/download', async (req, res) => {
     // FINAL FAILURE
     // ==========================================
     return res.status(500).json({
-        error: 'All download methods failed.',
-        details: failureReasons.slice(0, 3).join(' | '),
-        trace: failureReasons
+        error: 'All automated download methods failed.',
+        details: 'YouTube has updated its protection and is blocking automated requests. Try the manual fallback below.',
+        suggested_manual_url: `https://cobalt.tools/?url=${encodeURIComponent(url)}`,
+        trace: failureReasons.slice(0, 10)
     });
 });
 
