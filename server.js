@@ -476,8 +476,9 @@ app.post('/api/download', (req, res) => {
 // ========================================
 // SERVER STARTUP
 // ========================================
-app.listen(PORT, () => {
-    console.log('\n🚀 EasyDownloader Backend is up and running!');
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log('\n🚀 EasyDownloader Backend is up and running!');
     console.log(`🏠 URL: http://localhost:${PORT}`);
     console.log(`📁 Serving static files from: ${__dirname}`);
     console.log('\n📡 Available Endpoints:');
@@ -501,5 +502,6 @@ double-click "run_me.bat" again.
         console.error('Server error:', err);
     }
 });
+}
 
 module.exports = app;
