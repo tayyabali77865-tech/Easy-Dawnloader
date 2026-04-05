@@ -53,7 +53,7 @@ app.post('/api/youtube/download', async (req, res) => {
 
     try {
         const { exec } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
 
         console.log(`[YOUTUBE DOWNLOAD] Fetching metadata via ${binaryPath} for: ${url}`);
 
@@ -175,7 +175,7 @@ app.get('/api/youtube/stream-download', async (req, res) => {
 
     try {
         const { spawn } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
 
         console.log(`[YOUTUBE PROXY] Streaming format ${id} for: ${url} (ext: ${ext}) using ${binaryPath}`);
 
@@ -239,7 +239,7 @@ app.get('/api/youtube/stream', async (req, res) => {
 
     try {
         const { spawn } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
         const url = `https://www.youtube.com/watch?v=${videoId}`;
 
         console.log(`[YOUTUBE STREAM] Streaming ${type} for: ${videoId} using ${binaryPath}`);
