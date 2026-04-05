@@ -10,7 +10,11 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname))); // Serve static files from current directory
+app.use(express.static(path.join(__dirname)));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // HTTPS Agent to bypass SSL certificate verification
 const httpsAgent = new https.Agent({
@@ -49,9 +53,9 @@ app.post('/api/youtube/download', async (req, res) => {
 
     try {
         const { exec } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
 
-        console.log(`[YOUTUBE DOWNLOAD] Fetching metadata via yt-dlp for: ${url}`);
+        console.log(`[YOUTUBE DOWNLOAD] Fetching metadata via ${binaryPath} for: ${url}`);
 
         // Arguments for metadata fetch
         const args = [
@@ -171,9 +175,9 @@ app.get('/api/youtube/stream-download', async (req, res) => {
 
     try {
         const { spawn } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
 
-        console.log(`[YOUTUBE PROXY] Streaming format ${id} for: ${url} (ext: ${ext})`);
+        console.log(`[YOUTUBE PROXY] Streaming format ${id} for: ${url} (ext: ${ext}) using ${binaryPath}`);
 
         // Set headers based on format
         const isAudio = ext === 'mp3';
@@ -235,10 +239,10 @@ app.get('/api/youtube/stream', async (req, res) => {
 
     try {
         const { spawn } = require('child_process');
-        const binaryPath = path.join(__dirname, 'yt-dlp.exe');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
         const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-        console.log(`[YOUTUBE STREAM] Streaming ${type} for: ${videoId}`);
+        console.log(`[YOUTUBE STREAM] Streaming ${type} for: ${videoId} using ${binaryPath}`);
 
         // Set appropriate headers
         const filename = `${title || videoId}.${type === 'audio' ? 'mp3' : 'mp4'}`;
@@ -497,3 +501,5 @@ double-click "run_me.bat" again.
         console.error('Server error:', err);
     }
 });
+
+module.exports = app;
