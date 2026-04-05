@@ -23,7 +23,7 @@ const httpsAgent = new https.Agent({
 /**
  * YouTube: Fetch Video Metadata via YouTube oEmbed
  */
-app.get('/youtube/info', async (req, res) => {
+app.get('/api/youtube/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
@@ -42,13 +42,13 @@ app.get('/youtube/info', async (req, res) => {
 /**
  * YouTube: Fetch Download Link using local yt-dlp binary
  */
-app.post('/youtube/download', async (req, res) => {
+app.post('/api/youtube/download', async (req, res) => {
     const { url, format } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
     try {
         const { exec } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, '..', 'yt-dlp.exe') : path.join(__dirname, '..', 'yt-dlp');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
 
         console.log(`[YOUTUBE DOWNLOAD] Fetching metadata via ${binaryPath} for: ${url}`);
 
@@ -162,7 +162,7 @@ app.post('/youtube/download', async (req, res) => {
  * YouTube: Stream Download (Proxy)
  * Pipes the video content directly from local yt-dlp binary to the client response.
  */
-app.get('/youtube/stream-download', async (req, res) => {
+app.get('/api/youtube/stream-download', async (req, res) => {
 
     const { url, id, ext } = req.query;
 
@@ -172,9 +172,10 @@ app.get('/youtube/stream-download', async (req, res) => {
 
     try {
         const { spawn } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, '..', 'yt-dlp.exe') : path.join(__dirname, '..', 'yt-dlp');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
 
         console.log(`[YOUTUBE PROXY] Streaming format ${id} for: ${url} (ext: ${ext}) using ${binaryPath}`);
+
 
         // Set headers based on format
         const isAudio = ext === 'mp3';
@@ -222,7 +223,7 @@ app.get('/youtube/stream-download', async (req, res) => {
 /**
  * YouTube: Stream video/audio through server (Legacy Stream Endpoint for /stream)
  */
-app.get('/youtube/stream', async (req, res) => {
+app.get('/api/youtube/stream', async (req, res) => {
     // Legacy endpoint, keeping it but it might fail if we removed youtube-dl-exec usage?
     // Actually our new setup downloads yt-dlp.exe. 
     // This endpoint spawns 'yt-dlp'. If we rely on yt-dlp.exe in CWD, we should update this too.
@@ -236,7 +237,7 @@ app.get('/youtube/stream', async (req, res) => {
 
     try {
         const { spawn } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, '..', 'yt-dlp.exe') : path.join(__dirname, '..', 'yt-dlp');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
         const url = `https://www.youtube.com/watch?v=${videoId}`;
 
         console.log(`[YOUTUBE STREAM] Streaming ${type} for: ${videoId} using ${binaryPath}`);
@@ -301,7 +302,8 @@ app.get('/youtube/stream', async (req, res) => {
 /**
  * Facebook: Download Video
  */
-app.post('/facebook/download', async (req, res) => {
+app.post('/api/facebook/download', async (req, res) => {
+
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
@@ -361,7 +363,8 @@ app.post('/facebook/download', async (req, res) => {
 /**
  * Instagram: Download Video/Reel
  */
-app.post('/instagram/download', async (req, res) => {
+app.post('/api/instagram/download', async (req, res) => {
+
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
@@ -396,7 +399,9 @@ app.post('/instagram/download', async (req, res) => {
 /**
  * TikTok: Download Video
  */
-app.post('/tiktok/download', async (req, res) => {
+app.post('/api/tiktok/download', async (req, res) => {
+
+
 
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -465,11 +470,12 @@ app.post('/tiktok/download', async (req, res) => {
 // ========================================
 // LEGACY ENDPOINTS (for backward compatibility)
 // ========================================
-app.get('/info', (req, res) => res.redirect(307, `/youtube/info?${new URLSearchParams(req.query)}`));
-app.post('/download', (req, res) => {
+app.get('/api/info', (req, res) => res.redirect(307, `/api/youtube/info?${new URLSearchParams(req.query)}`));
+app.post('/api/download', (req, res) => {
     req.body.format = req.body.format || 'video';
-    res.redirect(307, '/youtube/download');
+    res.redirect(307, '/api/youtube/download');
 });
+
 
 // ========================================
 // SERVER STARTUP
