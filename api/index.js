@@ -10,12 +10,6 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
-
-// Serve frontend
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
 
 // HTTPS Agent to bypass SSL certificate verification
 const httpsAgent = new https.Agent({
@@ -26,7 +20,10 @@ const httpsAgent = new https.Agent({
 // YOUTUBE API ENDPOINTS
 // ========================================
 
-app.get('/api/youtube/info', async (req, res) => {
+// Vercel routes /api/* to this file. 
+// So app.get('/youtube/info') maps to /api/youtube/info.
+
+app.get('/youtube/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
     try {
@@ -37,12 +34,13 @@ app.get('/api/youtube/info', async (req, res) => {
     }
 });
 
-app.post('/api/youtube/download', async (req, res) => {
+app.post('/youtube/download', async (req, res) => {
     const { url, format } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
     try {
         const { exec } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
+        // If in api/, yt-dlp is in the parent directory (root)
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, '..', 'yt-dlp.exe') : path.join(__dirname, '..', 'yt-dlp');
         const args = [`"${url}"`, '--dump-single-json', '--no-check-certificates', '--no-warnings', '--prefer-free-formats', '--no-update'];
         exec(`"${binaryPath}" ${args.join(' ')}`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout) => {
             if (error) return res.status(500).json({ error: 'yt-dlp failed' });
@@ -70,11 +68,11 @@ app.post('/api/youtube/download', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/youtube/stream-download', async (req, res) => {
+app.get('/youtube/stream-download', async (req, res) => {
     const { url, id, ext } = req.query;
     try {
         const { spawn } = require('child_process');
-        const binaryPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : path.join(__dirname, 'yt-dlp');
+        const binaryPath = process.platform === 'win32' ? path.join(__dirname, '..', 'yt-dlp.exe') : path.join(__dirname, '..', 'yt-dlp');
         res.setHeader('Content-Disposition', `attachment; filename="download.${ext || 'mp4'}"`);
         res.setHeader('Content-Type', ext === 'mp3' ? 'audio/mpeg' : 'video/mp4');
         const args = [url, '-f', id, '-o', '-', '--no-check-certificates', '--no-warnings', '--no-update'];
@@ -84,7 +82,7 @@ app.get('/api/youtube/stream-download', async (req, res) => {
 });
 
 // FACEBOOK, INSTAGRAM, TIKTOK
-app.post('/api/facebook/download', async (req, res) => {
+app.post('/facebook/download', async (req, res) => {
     try {
         const { facebook } = require('@mrnima/facebook-downloader');
         const result = await facebook(req.body.url);
@@ -95,7 +93,7 @@ app.post('/api/facebook/download', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/instagram/download', async (req, res) => {
+app.post('/instagram/download', async (req, res) => {
     try {
         const { instagramGetUrl } = require('instagram-url-direct');
         const result = await instagramGetUrl(req.body.url);
@@ -104,7 +102,7 @@ app.post('/api/instagram/download', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/tiktok/download', async (req, res) => {
+app.post('/tiktok/download', async (req, res) => {
     try {
         const TiktokApiDl = require('@tobyg74/tiktok-api-dl');
         const result = await TiktokApiDl.Downloader(req.body.url, { version: "v3" });
@@ -116,10 +114,13 @@ app.post('/api/tiktok/download', async (req, res) => {
 });
 
 // Legacy
-app.get('/api/info', (req, res) => res.redirect(307, `/api/youtube/info?${new URLSearchParams(req.query)}`));
-app.post('/api/download', (req, res) => res.redirect(307, '/api/youtube/download'));
+app.get('/info', (req, res) => res.redirect(307, `/api/youtube/info?${new URLSearchParams(req.query)}`));
+app.post('/download', (req, res) => res.redirect(307, '/api/youtube/download'));
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
 module.exports = app;
+
+
+
