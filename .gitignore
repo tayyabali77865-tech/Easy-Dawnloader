@@ -1,0 +1,6 @@
+node_modules/
+*.log
+yt-dlp.exe
+17699*.js
+.DS_Store
+Thumbs.db
